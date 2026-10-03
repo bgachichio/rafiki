@@ -66,8 +66,8 @@ export class Telegram {
     const res = await f(`https://api.telegram.org/file/bot${this.token}/${path}`);
     return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
   }
-  async sendPoll(chatId: number, question: string, options: string[]): Promise<string | null> {
-    const r = (await this.call("sendPoll", { chat_id: chatId, question: question.slice(0, 255), options: options.map((o) => ({ text: o.slice(0, 100) })), is_anonymous: false })) as { ok?: boolean; result?: { poll?: { id?: string } } };
+  async sendPoll(chatId: number, question: string, options: string[], multiple = false): Promise<string | null> {
+    const r = (await this.call("sendPoll", { chat_id: chatId, question: question.slice(0, 255), options: options.map((o) => ({ text: o.slice(0, 100) })), is_anonymous: false, allows_multiple_answers: multiple })) as { ok?: boolean; result?: { poll?: { id?: string } } };
     return r.ok ? (r.result?.poll?.id ?? null) : null;
   }
   react(chatId: number, messageId: number, emoji: string): Promise<unknown> {

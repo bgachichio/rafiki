@@ -3,6 +3,7 @@ import type { Ctx } from "./agent.ts";
 import { getSetting } from "./db.ts";
 import { handleUpdate, offsetOf, type Env } from "./handler.ts";
 import { maybeSync, meetingNudges } from "./calendar.ts";
+import { maybeAskPreference } from "./learn.ts";
 import { nightly } from "./consolidate.ts";
 import { handleGoogleCallback } from "./oauth.ts";
 import { maybeBrief, maybeMonday, sweepReminders } from "./schedule.ts";
@@ -52,6 +53,7 @@ export default {
       await maybeMonday(c, tg, chatId);
       await maybeSync(c, tg, chatId);
       await meetingNudges(c, tg, chatId);
+      await maybeAskPreference(c, tg, chatId);
       await nightly(c);
     })().catch(() => undefined));
   },

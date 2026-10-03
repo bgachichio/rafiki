@@ -35,6 +35,7 @@ export function prefsLines(p: Record<string, string>): string[] {
   const out: string[] = [];
   const who = [p.call_me ? `Call the owner ${p.call_me}.` : "", p.work ? `They do: ${p.work}.` : "", p.areas ? `Life areas they care most about: ${p.areas}.` : "", p.work_days ? `Work days: ${p.work_days}.` : "", p.day_start && p.day_end ? `Their day runs ${p.day_start} to ${p.day_end}.` : ""].filter(Boolean).join(" ");
   if (who) out.push(`OWNER PROFILE: ${who}`);
+  if (p.lang) out.push(`LANGUAGES: the owner writes in ${p.lang}. Reply in the language they write in.`);
   const style = [p.style ? STYLE_TEXT[p.style] ?? p.style : "", p.style_note ?? "", p.voice_card ? `When drafting for them, write in their voice: ${p.voice_card}` : ""].filter(Boolean).join(" ");
   if (style) out.push(`HOW TO TALK TO THE OWNER: ${style}`);
   return out;

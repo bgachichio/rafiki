@@ -4,6 +4,7 @@ import { CALENDAR_WORDS, syncIfStale, type CalEvent } from "./calendar.ts";
 import type { GoogleEnv } from "./google.ts";
 import { fmtHit, ftsQuery, recall, type Hit } from "./memory.ts";
 import { prefsLines } from "./prefs.ts";
+import { loadPolicy, policyLine } from "./policy.ts";
 import { recallSkills, type SkillHit } from "./skills.ts";
 import { addMessage, recentMessages, type Db } from "./db.ts";
 import { classify, employerBlock, redactSecrets, termsOf, type Sens } from "./gates.ts";
@@ -100,6 +101,7 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
   const lines: string[] = [`NOW: ${fmtDateTime(now, off)} (East Africa Time).`];
   const prefs = Object.fromEntries(by("pref").map((r) => [r.a ?? "", r.b ?? ""]));
   lines.push(...prefsLines(prefs));
+  lines.push(policyLine((await loadPolicy(db)).policy));
   const instr = by("instr");
   if (instr.length) lines.push("STANDING INSTRUCTIONS (the owner's own rules for working with them): " + instr.map((i) => clip(i.a, 200)).join(" | "));
   const skills = by("skill");
@@ -198,7 +200,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promi
     let adjusted = false;
     if (when !== null && reminders.length === 1 && reminders[0]!.type === "reminder" && Math.abs(reminders[0]!.dueMs - when) > 60000) { reminders[0]!.dueMs = when; adjusted = true; }
     if (adjusted) traceExtra.reminder_time_adjusted = true;
-    done = await executeActions(db, acts, now, off, io);
+    done = await executeActions(db, acts, now, off, io, (await loadPolicy(db)).policy);
     const lines = [p.reply.trim()];
     if (done.length) lines.push(done.map((d) => `- ${d}`).join("\n"));
     out = { role: roleKey, text: warn + lines.join("\n\n"), buttons: p.buttons.length ? [p.buttons.map(([label, act]) => ({ text: label, data: say(act) }))] : undefined };

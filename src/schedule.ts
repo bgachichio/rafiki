@@ -5,6 +5,7 @@ import { briefLine, getEvents, conflicts } from "./calendar.ts";
 import { canNudge, isPaused, logOut } from "./budget.ts";
 import { feedbackRow } from "./feedback.ts";
 import { getSetting, setSetting } from "./db.ts";
+import { loadPolicy, recordSignal } from "./policy.ts";
 import { kes } from "./spend.ts";
 import type { Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, inQuietHours, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
@@ -14,22 +15,23 @@ export { canNudge, isPaused };
 export const CHASE_GAP_MS = 2 * 3600000;
 export const MAX_CHASES = 3;
 
-export interface Rem { id: number; text: string; due_ts: number; chase_count: number; repeat: string }
+export interface Rem { id: number; text: string; due_ts: number; chase_count: number; repeat: string; mode?: string | null; gap_ms?: number | null; max_chase?: number | null }
 
-/** Pure: what happens to a reminder after it is sent. */
-export function afterSend(r: Rem, now: number): { state: "open" | "flagged"; due_ts: number; chase_count: number } {
+/** Pure: what happens to a reminder after it is sent, under the rule it was created with (older reminders chase as before). */
+export function afterSend(r: Rem, now: number): { state: "open" | "flagged" | "sent" | "awaiting"; due_ts: number; chase_count: number } {
   const chase = r.chase_count + 1;
-  if (chase > MAX_CHASES) return { state: "flagged", due_ts: r.due_ts, chase_count: chase };
-  return { state: "open", due_ts: now + CHASE_GAP_MS, chase_count: chase };
+  if (r.mode === "once") return { state: "sent", due_ts: r.due_ts, chase_count: chase };
+  if (r.mode === "confirm") return { state: "awaiting", due_ts: r.due_ts, chase_count: chase };
+  if (chase > (r.max_chase ?? MAX_CHASES)) return { state: "flagged", due_ts: r.due_ts, chase_count: chase };
+  return { state: "open", due_ts: now + (r.gap_ms ?? CHASE_GAP_MS), chase_count: chase };
 }
-
 
 export async function sweepReminders(ctx: Ctx, tg: Telegram, chatId: number): Promise<number> {
   if (await isPaused(ctx)) return 0;
   const qs = (await getSetting(ctx.db, "quiet_start")) ?? "21:00";
   const qe = (await getSetting(ctx.db, "quiet_end")) ?? "05:30";
   const quiet = inQuietHours(ctx.now, ctx.off, qs, qe);
-  const due = await ctx.db.prepare("SELECT id, text, due_ts, chase_count, repeat FROM reminders WHERE state = 'open' AND due_ts <= ? ORDER BY due_ts LIMIT 5").bind(ctx.now).all<Rem>();
+  const due = await ctx.db.prepare("SELECT r.id, r.text, r.due_ts, r.chase_count, r.repeat, p.mode, p.gap_ms, p.max_chase FROM reminders r LEFT JOIN reminder_policy p ON p.reminder_id = r.id WHERE r.state = 'open' AND r.due_ts <= ? ORDER BY r.due_ts LIMIT 5").bind(ctx.now).all<Rem>();
   let sent = 0;
   for (const r of due.results) {
     if (quiet && r.chase_count > 0) continue; // first delivery always goes out; chases wait for the morning
@@ -39,6 +41,7 @@ export async function sweepReminders(ctx: Ctx, tg: Telegram, chatId: number): Pr
     await tg.send(chatId, label, rows);
     const next = afterSend(r, ctx.now);
     await ctx.db.prepare("UPDATE reminders SET state = ?, due_ts = ?, chase_count = ?, last_sent_ts = ? WHERE id = ?").bind(next.state, next.due_ts, next.chase_count, ctx.now, r.id).run();
+    if (next.state === "flagged") await recordSignal(ctx.db, ctx.now, "chase_ignored", String(r.id));
     await logOut(ctx, "reminder", false);
     sent++;
   }
@@ -50,7 +53,7 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   const dayStart = startOfLocalDay(now, off);
   const dayEnd = dayStart + 86400000;
   const items: string[] = [];
-  const flagged = await db.prepare("SELECT text FROM reminders WHERE state = 'flagged' ORDER BY due_ts LIMIT 3").bind().all<{ text: string }>();
+  const flagged = await db.prepare("SELECT text FROM reminders WHERE state IN ('flagged', 'awaiting') ORDER BY due_ts LIMIT 3").bind().all<{ text: string }>();
   for (const f of flagged.results) items.push(`Overdue, still open: ${f.text}`);
   const today = await db.prepare("SELECT text, due_ts FROM reminders WHERE state = 'open' AND due_ts < ? ORDER BY due_ts LIMIT 5").bind(dayEnd).all<{ text: string; due_ts: number }>();
   for (const t of today.results) items.push(`${fmtTime(t.due_ts, off)} ${t.text}`);
@@ -58,7 +61,7 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   for (const t of tasks.results) items.push(t.text);
   const goal = await db.prepare("SELECT text, by_date FROM goals WHERE state = 'open' ORDER BY id LIMIT 1").bind().first<{ text: string; by_date: string | null }>();
   if (items.length < 3 && goal) items.push(`Move your goal forward: ${goal.text}${goal.by_date ? ` (by ${goal.by_date})` : ""}`);
-  const top = items.slice(0, 3);
+  const top = items.slice(0, (await loadPolicy(db)).policy.briefItems);
 
   const lines = [`Morning. ${fmtDateTime(now, off).split(" ").slice(0, 2).join(" ")}`];
   if (top.length) { lines.push("Top three today:"); top.forEach((t, i) => lines.push(`${i + 1}. ${t}`)); }

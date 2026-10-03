@@ -60,6 +60,7 @@ export async function onboardingText(ctx: Ctx, tg: Telegram, chatId: number, tex
     await setSetting(ctx.db, "brief_time", text.trim().padStart(5, "0"));
     await setSetting(ctx.db, "ob_step", "done");
     await tg.send(chatId, `Set. Your brief arrives at ${text.trim().padStart(5, "0")}. Tell me anything else any time, or use the menu below.`, undefined, true);
+    await tg.send(chatId, "One more thing, and it makes me much more useful: nine quick taps to say how I should remind you, how long my replies should be, and when to stay quiet. You can skip any.", [[{ text: "Set up how I work", data: "dc:seq" }, { text: "Later", data: "ob:ok" }]]);
     return true;
   }
   return false;
@@ -83,6 +84,7 @@ export async function onboardingCallback(ctx: Ctx, tg: Telegram, chatId: number,
     if (parseHM(v) !== null) await setSetting(ctx.db, "brief_time", v);
     await setSetting(ctx.db, "ob_step", "done");
     await tg.send(chatId, `Set for ${v}. I'll also tell you what I can look at next when you ask. Mail and calendar come in a later release. Use the menu below any time.`, undefined, true);
+    await tg.send(chatId, "One more thing, and it makes me much more useful: nine quick taps to say how I should remind you, how long my replies should be, and when to stay quiet. You can skip any.", [[{ text: "Set up how I work", data: "dc:seq" }, { text: "Later", data: "ob:ok" }]]);
     return true;
   }
   return false;

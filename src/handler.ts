@@ -13,13 +13,16 @@ import { eraseText, eraseWarning, dropGoogle, exportNext, exportStart } from "./
 import { feedbackSummary, isFeedback, recordFeedback, thirtyDaysAgo } from "./feedback.ts";
 import { limitsText } from "./limits.ts";
 import { AUTHOR, SUPPORT, aboutText } from "./support.ts";
+import { cardCallback, cardPoll, cardText, rulesLines, startSequence } from "./cards.ts";
+import { SHORTER } from "./learn.ts";
+import { loadPolicy, recordSignal } from "./policy.ts";
 import { onboardingCallback, onboardingText, startOnboarding } from "./onboarding.ts";
 import { hasSkillFrontmatter } from "./skills.ts";
 import { importCallback, importPlan, importsList, importText, memoryCallback, memoryHome, modelCallback, modelCommand, pendingEdit, prefsCallback, prefsHome, reportSkill, skillCommand, skillsCallback, skillsDone, skillsHome, skillUpload, undoCommand, writingSample } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
 import { feeFor, kes, parseFees, parseSpendLine } from "./spend.ts";
 import { Telegram, type Fetch, type TgCallback, type TgMessage, type TgUpdate } from "./telegram.ts";
-import { fmtDate, fmtDateTime, fmtTime, startOfLocalDay } from "./time.ts";
+import { fmtDate, fmtDateTime, fmtTime, parseHM, startOfLocalDay } from "./time.ts";
 
 export interface Env extends AgentEnv, GoogleEnv {
   MEDIA_SCALE?: string;
@@ -50,7 +53,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /today /agenda /memory /search /remember /forget /export /erase /limits /about /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /today /agenda /memory /search /remember /forget /rules /export /erase /limits /about /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -115,7 +118,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
     case "/writing": await startWriting(ctx, tg, chatId); return;
     case "/model": await modelCommand(ctx, tg, chatId, args); return;
     case "/cancel": {
-      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode"]) await setSetting(ctx.db, k, "");
+      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode", "dc_wait", "dc_seq"]) await setSetting(ctx.db, k, "");
       await tg.send(chatId, "Cancelled. Nothing is waiting on you now.");
       return;
     }
@@ -131,6 +134,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
       await tg.send(chatId, "Which should I forget?\n" + hits.map((h, i) => `${i + 1}. ${h.text}`).join("\n"), [hits.map((h, i) => ({ text: `Forget ${i + 1}`, data: `fg:${h.id}` }))]);
       return;
     }
+    case "/rules": await startSequence(ctx, tg, chatId); return;
     case "/export": await exportStart(ctx, tg, chatId); return;
     case "/erase": {
       if (args.trim().toLowerCase() !== "everything") { await tg.send(chatId, "/erase everything wipes all I hold about you, after a warning and a typed confirmation. To remove one thing, use /forget. To keep a copy first, use /export."); return; }
@@ -277,6 +281,8 @@ async function handleText(ctx: Ctx, tg: Telegram, chatId: number, text: string):
   if (menu === "coach") { await converse(ctx, tg, chatId, "Coach me. Ask me one good question about my goals this week."); return; }
   if (menu === "business") { await converse(ctx, tg, chatId, "Act as my business adviser. Ask me the one question you most need answered first."); return; }
   // A spend-shaped line is logged even if the owner skipped the buttons; other free text answers the current onboarding question.
+  if (await cardText(ctx, tg, chatId, t)) return;
+  if (SHORTER.test(t)) await recordSignal(ctx.db, ctx.now, "shorter");
   if (await pendingEdit(ctx, tg, chatId, t)) return;
   if ((await getSetting(ctx.db, "skills_wait")) === "1" && /^(done|finished|that'?s all|that is all)\.?$/i.test(t)) { await skillsDone(ctx, tg, chatId); return; }
   if (await importText(ctx, tg, chatId, t)) return;
@@ -305,6 +311,7 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   if (data === "ex:start") { await exportStart(ctx, tg, chatId); return; }
   if (data === "ex:next") { await exportNext(ctx, tg, chatId); return; }
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
+  if (await cardCallback(ctx, tg, chatId, data)) return;
   if (await onboardingCallback(ctx, tg, chatId, data)) return;
   if (await kmCallback(ctx, tg, chatId, data)) return;
   if (await bringCallback(ctx, tg, chatId, data)) return;
@@ -360,9 +367,10 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
       await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(ctx.now + 3600000, id).run();
       await tg.send(chatId, "I'll remind you again in an hour.");
     } else {
-      const tomorrow9 = startOfLocalDay(ctx.now, ctx.off) + 86400000 + 9 * 3600000;
+      const morning = parseHM((await loadPolicy(ctx.db)).policy.morning) ?? 540;
+      const tomorrow9 = startOfLocalDay(ctx.now, ctx.off) + 86400000 + morning * 60000;
       await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(tomorrow9, id).run();
-      await tg.send(chatId, "Moved to tomorrow 09:00.");
+      await tg.send(chatId, `Moved to tomorrow ${fmtTime(tomorrow9, ctx.off)}.`);
     }
   }
 }
@@ -472,6 +480,7 @@ export async function handleUpdate(d: Deps, u: TgUpdate): Promise<string> {
   try {
     if (u.callback_query) { await handleCallback(ctx, tg, u.callback_query, chatId); return "callback"; }
     if (u.poll_answer) {
+      if (await cardPoll(ctx, tg, chatId, u.poll_answer.poll_id, u.poll_answer.option_ids)) return "card-poll";
       const poll = await d.db.prepare("SELECT question, options FROM polls WHERE poll_id = ?").bind(u.poll_answer.poll_id).first<{ question: string; options: string }>();
       if (!poll) return "ignored";
       const opts = JSON.parse(poll.options) as string[];

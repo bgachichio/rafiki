@@ -42,3 +42,10 @@ CREATE INDEX IF NOT EXISTS idx_skill_sections_skill ON skill_sections (skill_id)
 
 -- Feedback: a thumbs up or down under each brief and nudge.
 CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, vote INTEGER NOT NULL, msg_id INTEGER, excerpt TEXT NOT NULL DEFAULT '');
+
+-- Decision cards, reminder rules and learning signals.
+CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, key TEXT NOT NULL, question TEXT NOT NULL, options TEXT NOT NULL, proposed TEXT, chosen TEXT, custom TEXT, state TEXT NOT NULL DEFAULT 'open', done_ts INTEGER, multi INTEGER NOT NULL DEFAULT 0, poll_id TEXT, seq INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS pref_state (key TEXT PRIMARY KEY, status TEXT NOT NULL, ts INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS reminder_policy (reminder_id INTEGER PRIMARY KEY, mode TEXT NOT NULL, gap_ms INTEGER NOT NULL, max_chase INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT);
+CREATE INDEX IF NOT EXISTS idx_signals_kind ON signals (kind, ts);

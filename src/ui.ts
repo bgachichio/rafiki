@@ -5,6 +5,7 @@ import { getSetting, setSetting } from "./db.ts";
 import { fileImport, parseExport, planText, undoImport, type Parsed } from "./import.ts";
 import { bringMenu, kmAsk, KM, startSkills } from "./knowme.ts";
 import { CATEGORIES, indexText, memoryStats } from "./memory.ts";
+import { rulesLines } from "./cards.ts";
 import { loadPrefs, PREF_LABELS, setPref } from "./prefs.ts";
 import { importSkill, MAX_PER_BATCH, removeSkill, setSkillEnabled } from "./skills.ts";
 import type { Button, Telegram } from "./telegram.ts";
@@ -90,7 +91,8 @@ export async function prefsHome(ctx: Ctx, tg: Telegram, chatId: number): Promise
   for (const [k, label] of Object.entries(PREF_LABELS)) lines.push(`${label}: ${p[k] ? clip(p[k]!, 140) : "not set"}`);
   const quiet = `${(await getSetting(ctx.db, "quiet_start")) ?? "21:00"} to ${(await getSetting(ctx.db, "quiet_end")) ?? "05:30"}`;
   lines.push(`Quiet hours: ${quiet}`, `Brief time: ${(await getSetting(ctx.db, "brief_time")) ?? "08:00"}`, "Your standing instructions are under /memory, in the instructions category.");
-  const btn: Button[][] = [];
+  lines.push("", "How I work for you:", ...(await rulesLines(ctx)));
+  const btn: Button[][] = [[{ text: "Review how I work", data: "dc:seq" }]];
   const ed = KM.map((q, i) => ({ q, i })).filter((x) => x.q.editable);
   for (let i = 0; i < ed.length; i += 2) btn.push(ed.slice(i, i + 2).map((x) => ({ text: PREF_LABELS[x.q.key] ?? x.q.key, data: `pf:${x.i}` })));
   btn.push([{ text: "Standing instructions", data: "mem:c:instructions:0" }, { text: "Choose the AI model", data: "mdl:home" }]);

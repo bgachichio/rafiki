@@ -38,7 +38,7 @@ This list is generated from [`src/limits.ts`](src/limits.ts) and is the same one
 
 **It cannot overstep.**
 - Talk to anyone else. It answers only the Telegram account that claimed it, and strangers get no reply.
-- Interrupt you more than 3 times a day unprompted, or at all during your quiet hours. Reminders you set and your morning brief are not counted.
+- Interrupt you more than your daily limit unprompted (3 unless you change it), or at all during your quiet hours. Reminders you set and your morning brief are not counted.
 - Act while paused. Type /pause and it stops until you /resume.
 - Keep thinking once the day's model budget is used (USD 1.00 by default, changeable with /cap). Reminders and logging still work.
 

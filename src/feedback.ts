@@ -1,5 +1,6 @@
 // Thumbs up or down under every brief and nudge. Votes are stored so the owner can see what lands and what does not.
 import type { Db } from "./db.ts";
+import { recordSignal } from "./policy.ts";
 import type { Button } from "./telegram.ts";
 
 export const FEEDBACK_KINDS = ["brief", "monday", "meeting", "chase"] as const;
@@ -15,6 +16,7 @@ export async function recordFeedback(db: Db, now: number, data: string, msgId: n
   if (!m || !(FEEDBACK_KINDS as readonly string[]).includes(m[2] ?? "")) return null;
   const vote = m[1] === "u" ? 1 : -1;
   await db.prepare("INSERT INTO feedback (ts, kind, vote, msg_id, excerpt) VALUES (?, ?, ?, ?, ?)").bind(now, m[2], vote, msgId ?? null, (text ?? "").slice(0, 160)).run();
+  if (vote < 0) await recordSignal(db, now, `${m[2]}_down`);
   return vote > 0 ? "Thanks, glad it helped." : "Noted. If you tell me what was off, I'll remember it.";
 }
 

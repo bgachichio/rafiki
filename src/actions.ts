@@ -2,11 +2,12 @@
 import type { Db } from "./db.ts";
 import { mayExecute } from "./gates.ts";
 import { addFact, isCategory, type Category } from "./memory.ts";
+import { DEFAULT_POLICY, type Policy } from "./policy.ts";
 import { feeFor, kes, type Tier } from "./spend.ts";
 import { fmtDateTime, parseHM, parseLocalIso } from "./time.ts";
 
 export type Action =
-  | { type: "reminder"; text: string; dueMs: number; repeat: "none" | "daily" | "weekly" }
+  | { type: "reminder"; text: string; dueMs: number; repeat: "none" | "daily" | "weekly"; kind: "event" | "task" }
   | { type: "task_add"; text: string }
   | { type: "goal_add"; text: string; metric: string | null; target: string | null; by: string | null }
   | { type: "ledger_set"; prospect: string; rung: number; nextAsk: string | null }
@@ -35,7 +36,7 @@ export function validateActions(raw: unknown, now: number, off: number): Action[
         const due = typeof o.due === "string" ? parseLocalIso(o.due, off) : null;
         if (!text || due === null || due < now - 60000) break;
         const repeat = o.repeat === "daily" || o.repeat === "weekly" ? o.repeat : "none";
-        out.push({ type, text, dueMs: due, repeat });
+        out.push({ type, text, dueMs: due, repeat, kind: o.kind === "event" ? "event" : "task" });
         break;
       }
       case "task_add": {
@@ -92,15 +93,27 @@ export async function loadTiers(db: Db): Promise<Tier[]> {
   return r.results;
 }
 
+const inText = (l: number): string => (l % 1440 === 0 ? `in ${l / 1440} day${l === 1440 ? "" : "s"}` : l % 60 === 0 ? `in ${l / 60} hour${l === 60 ? "" : "s"}` : `in ${l} minutes`);
+
 /** Execute and return one plain line per thing actually done, so the reply never claims more than happened. */
-export async function executeActions(db: Db, actions: Action[], now: number, off: number, io?: ActionIO): Promise<string[]> {
+export async function executeActions(db: Db, actions: Action[], now: number, off: number, io?: ActionIO, policy: Policy = DEFAULT_POLICY): Promise<string[]> {
   const done: string[] = [];
   for (const a of actions) {
     switch (a.type) {
-      case "reminder":
-        await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?)").bind(now, a.text, a.dueMs, a.repeat).run();
-        done.push(`Reminder set for ${fmtDateTime(a.dueMs, off)}: ${a.text}`);
+      case "reminder": {
+        // An event gets the owner's lead times (a heads-up each, sent once); a task gets one reminder with the owner's chase rules.
+        const leads = a.kind === "event" ? policy.eventLeads : [0];
+        const slots = leads.map((l) => ({ lead: l, due: a.dueMs - l * 60000 })).filter((x) => x.lead === 0 || x.due > now + 60000);
+        if (!slots.some((x) => x.lead === 0) && !slots.length) slots.push({ lead: 0, due: a.dueMs });
+        for (const x of slots) {
+          const main = x.lead === 0;
+          const r = await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(now, main ? a.text : `Coming up ${inText(x.lead)}: ${a.text}`, x.due, main ? a.repeat : "none").first<{ id: number }>();
+          const mode = main ? policy.mode : "once";
+          await db.prepare("INSERT INTO reminder_policy (reminder_id, mode, gap_ms, max_chase) VALUES (?, ?, ?, ?)").bind(Number(r?.id), mode, Math.round(policy.gapH * 3600000), policy.max).run();
+        }
+        done.push(slots.length === 1 ? `Reminder set for ${fmtDateTime(slots[0]!.due, off)}: ${a.text}` : `Reminders set for ${slots.map((x) => fmtDateTime(x.due, off)).join(", ")}: ${a.text}`);
         break;
+      }
       case "task_add":
         await db.prepare("INSERT INTO tasks (ts, text) VALUES (?, ?)").bind(now, a.text).run();
         done.push(`Task added: ${a.text}`);
