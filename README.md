@@ -49,29 +49,33 @@ This list is generated from [`src/limits.ts`](src/limits.ts) and is the same one
 - It can misread, mis-hear or misremember. Check anything you will act on. It is not a licensed financial, medical or legal adviser.
 <!-- limits:end -->
 
-## Install it yourself (today)
-You need about 15 minutes, Node 20 or newer, a free [Cloudflare account](https://dash.cloudflare.com/sign-up), a Telegram account, and an [OpenRouter](https://openrouter.ai) account with a little credit.
+## Install it yourself
+Five steps, about 12 minutes the first time. You need a free [Cloudflare account](https://dash.cloudflare.com/sign-up), a Telegram account, and an [OpenRouter](https://openrouter.ai) account with a little credit. Your bot, your AI key and your data stay yours: nothing passes through the author.
 
-1. **Create your bot.** Open [@BotFather](https://t.me/BotFather), send `/newbot`, choose a name and a username ending in `bot`, and copy the token.
+1. **Name it and create its bot.** Open [@BotFather](https://t.me/BotFather), send `/newbot`, choose the name you want to call your Rafiki and a username ending in `bot`, and copy the token it gives you.
 2. **Get an AI key.** At [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) create a key just for Rafiki and give it a credit limit.
-3. **Install.**
-   ```bash
-   git clone https://github.com/bgachichio/rafiki.git
-   cd rafiki
-   ./deploy.sh
-   ```
-   The script runs the tests, creates the database, deploys the Worker, connects Telegram, and stores your secrets in Cloudflare. Typing is hidden and nothing is written to disk.
-4. **Say hello.** Tap the link it prints and press Start. You become the owner; nobody else can use your bot.
-5. **Bring your memory.** Send `/import` and follow the prompt to bring in what another assistant knows about you.
+3. **Install.** Tap the button, sign in to Cloudflare, and paste the bot token, the AI key and a setup word you invent when it asks:
 
-Run `./deploy.sh google` later to add Google Calendar (a one-time Google Cloud setup), or `./deploy.sh webhook` to refresh the Telegram connection and command menu.
+   [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bgachichio/rafiki)
 
-Defaults are East Africa Time and Kenyan shillings (`TZ_OFFSET_MIN` in `wrangler.toml`). A timezone and currency question is on the roadmap.
+   Then open your new address followed by `/setup`, type your setup word, and the page connects Telegram, sets the mandrill as your bot's photo, and gives you a link.
+4. **Say hello.** Open the link, press Start, and answer a few questions. Rafiki asks what to call you and offers to read your calendar and contacts.
+5. **Bring your memory and preferences.** Send `/import`, paste the prompt into the assistant you already use, and send back the two files (`memory.md`, `preferences.md`). Rafiki shows what it found and asks you to confirm each choice.
 
-If you keep private settings (your database id, your Worker address), put them in `wrangler.local.toml`, which Git ignores, and run `WRANGLER_CONFIG=wrangler.local.toml ./deploy.sh`.
+*The one-click route is new and has not yet been run end to end by anyone but its author. If it trips, the terminal route below always works.*
+
+**From a terminal instead** (Node 20 or newer):
+```bash
+git clone https://github.com/bgachichio/rafiki.git
+cd rafiki
+./deploy.sh
+```
+The script runs the tests, creates the database, deploys the Worker, connects Telegram, and stores your secrets in Cloudflare. Typing is hidden and nothing is written to disk. `./deploy.sh google` adds Google Calendar later (a one-time Google Cloud setup). `./deploy.sh webhook` refreshes the Telegram connection and menu.
+
+Defaults are East Africa Time and Kenyan shillings (`TZ_OFFSET_MIN` in `wrangler.toml`). A timezone and currency question is on the roadmap. If you keep private settings (your database id, your Worker address), put them in `wrangler.local.toml`, which Git ignores, and run `WRANGLER_CONFIG=wrangler.local.toml ./deploy.sh`.
 
 ## Commands
-`/today /agenda /calendars /memory /preferences /search /remember /forget /export /erase /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /limits /about`
+`/today /rules /agenda /calendars /memory /preferences /search /remember /forget /export /erase /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /limits /about`
 
 ## Develop
 ```bash
@@ -82,7 +86,7 @@ npm run dev       # local Worker
 The model is only ever called through `src/llm.ts`. Only low-consequence actions exist (`src/gates.ts`): Rafiki cannot send, spend or delete. Never commit a secret; a pre-commit hook runs gitleaks.
 
 ## Roadmap
-Five-step guided setup, one-click deploy, a preferences engine for reminder behaviour, iCal and contacts import, a Starter Pack of generalised skills, and an optional Telegram Mini App dashboard. Not promised until shipped.
+Done: decision cards and a preferences engine for reminder behaviour, the two-file memory import, the `/setup` page and one-click deploy. Next: iCal calendars and contacts import, a Starter Pack of generalised skills, a guided setup page on the website, and an optional Telegram Mini App dashboard. Not promised until shipped.
 
 ## Support
 Rafiki is free and has no ads. If it saved you time, you can help keep it that way. Payments leave Rafiki only when you tap.

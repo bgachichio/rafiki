@@ -11,7 +11,8 @@
     "dev": "wrangler dev",
     "deploy": "./deploy.sh",
     "limits": "node scripts/sync-limits.ts",
-    "scan": "./scripts/privacy-scan.sh"
+    "scan": "./scripts/privacy-scan.sh",
+    "gen": "node scripts/gen-assets.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261001.1",
@@ -24,5 +25,18 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bgachichio/rafiki.git"
+  },
+  "cloudflare": {
+    "bindings": {
+      "TELEGRAM_BOT_TOKEN": {
+        "description": "The token BotFather gave you for your new bot (it looks like 123456789:AA...)."
+      },
+      "OPENROUTER_API_KEY": {
+        "description": "An OpenRouter API key made just for Rafiki, with a credit limit set (openrouter.ai/settings/keys)."
+      },
+      "CLAIM_CODE": {
+        "description": "A setup word you invent (letters and numbers, at least 8). It proves the bot is yours; you type it once on the /setup page."
+      }
+    }
   }
 }

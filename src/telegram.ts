@@ -91,6 +91,19 @@ export class Telegram {
     if (!res.ok || out.ok === false) console.error(`telegram sendDocument failed: ${res.status} ${out.description ?? ""}`);
     return res.ok && out.ok !== false;
   }
+  /** The method behind /setup: each of these is one call to Telegram, and each reports whether it was accepted. */
+  async api(method: string, body: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; description?: string }> {
+    return (await this.call(method, body)) as { ok: boolean; result?: unknown; description?: string };
+  }
+  async setProfilePhoto(png: Uint8Array): Promise<boolean> {
+    const form = new FormData();
+    form.append("photo", JSON.stringify({ type: "static", photo: "attach://mark" }));
+    form.append("mark", new Blob([png], { type: "image/png" }), "mark.png");
+    const f = this.f;
+    const res = await f(`https://api.telegram.org/bot${this.token}/setMyProfilePhoto`, { method: "POST", body: form });
+    const out = (await res.json().catch(() => ({}))) as { ok?: boolean };
+    return res.ok && out.ok === true;
+  }
   clearButtons(chatId: number, messageId: number): Promise<unknown> {
     return this.call("editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } });
   }

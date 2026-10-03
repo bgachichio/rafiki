@@ -1,7 +1,7 @@
 // The Google sign-in return trip. The only public GET route; it accepts nothing without a valid, unused, unexpired state.
 import type { Ctx } from "./agent.ts";
 import { syncCalendar } from "./calendar.ts";
-import { encrypt } from "./crypto.ts";
+import { encrypt, keyOf } from "./crypto.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { checkState, exchangeCode, googleConfigured } from "./google.ts";
 import { Telegram } from "./telegram.ts";
@@ -23,7 +23,7 @@ export async function handleGoogleCallback(ctx: Ctx, tg: Telegram, url: URL): Pr
   await setSetting(db, "oauth_nonce", ""); // single use
   try {
     const t = await exchangeCode(env, f, code);
-    const enc = await encrypt(env.ENCRYPTION_KEY ?? "", JSON.stringify({ refresh_token: t.refreshToken }));
+    const enc = await encrypt(await keyOf(env), JSON.stringify({ refresh_token: t.refreshToken }));
     await db.prepare("INSERT INTO credentials (provider, enc, meta, ts) VALUES ('google', ?, ?, ?) ON CONFLICT(provider) DO UPDATE SET enc = excluded.enc, meta = excluded.meta, ts = excluded.ts").bind(enc, JSON.stringify({ scope: "calendar.readonly" }), now).run();
     const r = await syncCalendar(ctx);
     const owner = Number((await getSetting(db, "owner_chat_id")) ?? 0);

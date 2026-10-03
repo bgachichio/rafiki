@@ -29,7 +29,7 @@ export interface Env extends AgentEnv, GoogleEnv {
   MODEL_MEDIA?: string;
   AI?: MediaEnv["AI"];
   TELEGRAM_BOT_TOKEN: string;
-  TELEGRAM_WEBHOOK_SECRET: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
   CLAIM_CODE: string;
   TZ_OFFSET_MIN: string;
 }
@@ -455,6 +455,7 @@ export async function handleUpdate(d: Deps, u: TgUpdate): Promise<string> {
   const tg = new Telegram(d.env.TELEGRAM_BOT_TOKEN, d.f);
   const ctx: Ctx = { db: d.db, env: d.env, f: d.f, now: d.now, off: offsetOf(d.env), tg };
   ctx.env = await withModelOverrides(d.db, d.env);
+  if (!ctx.env.PUBLIC_URL) ctx.env = { ...ctx.env, PUBLIC_URL: (await getSetting(d.db, "public_url")) ?? "" };
   const m0: TgMessage | undefined = u.message ?? u.edited_message;
   const msg: TgMessage | undefined = m0 ?? u.callback_query?.message;
   const from = m0?.from ?? u.callback_query?.from ?? u.poll_answer?.user;

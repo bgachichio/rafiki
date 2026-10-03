@@ -1,17 +1,18 @@
 // Google sign-in for the owner's own calendar, read-only. One tap in Telegram, one consent screen, tokens encrypted at rest.
-import { hmacHex, randomHex, safeEqual } from "./crypto.ts";
+import { hmacHex, keyOf, randomHex, safeEqual } from "./crypto.ts";
 import type { Fetch } from "./telegram.ts";
 
 export interface GoogleEnv {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   ENCRYPTION_KEY?: string;
+  TELEGRAM_BOT_TOKEN?: string;
   PUBLIC_URL?: string;
 }
 export const SCOPE_CALENDAR = "https://www.googleapis.com/auth/calendar.readonly";
 export class AuthExpired extends Error {}
 
-export const googleConfigured = (e: GoogleEnv): boolean => !!(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET && e.ENCRYPTION_KEY && e.PUBLIC_URL);
+export const googleConfigured = (e: GoogleEnv): boolean => !!(e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET && e.PUBLIC_URL);
 export const redirectUri = (e: GoogleEnv): string => `${e.PUBLIC_URL}/oauth/google/callback`;
 
 const STATE_TTL_MS = 10 * 60000;
@@ -20,13 +21,13 @@ const STATE_TTL_MS = 10 * 60000;
 export async function makeState(e: GoogleEnv, now: number): Promise<{ state: string; nonce: string }> {
   const nonce = randomHex(12);
   const payload = `${nonce}.${now + STATE_TTL_MS}`;
-  return { state: `${payload}.${await hmacHex(e.ENCRYPTION_KEY ?? "", payload)}`, nonce };
+  return { state: `${payload}.${await hmacHex(await keyOf(e), payload)}`, nonce };
 }
 export async function checkState(e: GoogleEnv, state: string, now: number): Promise<string | null> {
   const parts = state.split(".");
   if (parts.length !== 3) return null;
   const [nonce, exp, sig] = parts as [string, string, string];
-  const good = await hmacHex(e.ENCRYPTION_KEY ?? "", `${nonce}.${exp}`);
+  const good = await hmacHex(await keyOf(e), `${nonce}.${exp}`);
   if (!safeEqual(good, sig)) return null;
   if (!(Number(exp) > now)) return null;
   return nonce;

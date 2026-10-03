@@ -50,3 +50,10 @@ export function safeEqual(a: string, b: string): boolean {
 export function randomHex(bytes: number): string {
   return [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** The key for data at rest: ENCRYPTION_KEY if the owner set one, otherwise derived from the bot token (a secret only this Worker holds). */
+export async function keyOf(env: { ENCRYPTION_KEY?: string; TELEGRAM_BOT_TOKEN?: string }): Promise<string> {
+  if (env.ENCRYPTION_KEY) return env.ENCRYPTION_KEY;
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(`rafiki-key:${env.TELEGRAM_BOT_TOKEN ?? ""}`)));
+  return [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+}

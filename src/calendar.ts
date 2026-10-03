@@ -1,6 +1,6 @@
 // Calendar: sync into a per-calendar cache, read it for the brief, the agent and /agenda, and warn before meetings.
 import type { Ctx } from "./agent.ts";
-import { decrypt } from "./crypto.ts";
+import { decrypt, keyOf } from "./crypto.ts";
 import type { Db } from "./db.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { AuthExpired, accessToken, googleConfigured, listCalendars, listEvents, type RawEvent } from "./google.ts";
@@ -90,7 +90,7 @@ export async function syncCalendar(ctx: Ctx): Promise<SyncResult> {
   const cred = await db.prepare("SELECT enc FROM credentials WHERE provider = 'google'").bind().first<{ enc: string }>();
   if (!cred) return { status: "not_connected" };
   try {
-    const refresh = (JSON.parse(await decrypt(env.ENCRYPTION_KEY ?? "", cred.enc)) as { refresh_token: string }).refresh_token;
+    const refresh = (JSON.parse(await decrypt(await keyOf(env), cred.enc)) as { refresh_token: string }).refresh_token;
     const token = await accessToken(env, f, refresh);
     const off2 = await disabledCals(db);
     const listed = await listCalendars(f, token);

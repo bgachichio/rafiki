@@ -144,7 +144,7 @@ test("nightly: runs only 02:00 to 04:00, newest unsummarised past day first, nev
 });
 
 test("persistence: no code path deletes conversation history", () => {
-  for (const f of readdirSync(new URL("../src/", import.meta.url))) {
+  for (const f of readdirSync(new URL("../src/", import.meta.url), { recursive: true }).map(String).filter((x) => x.endsWith(".ts"))) {
     const txt = readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
     assert.ok(!/DELETE\s+FROM\s+messages/i.test(txt), `${f} must not delete messages`);
     assert.ok(!/DROP\s+TABLE/i.test(txt), `${f} must not drop tables`);

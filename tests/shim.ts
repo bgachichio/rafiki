@@ -52,7 +52,7 @@ export function fakeFetch(queue: LlmReply[], files: Record<string, Uint8Array> =
     let body: Record<string, unknown> = {};
     if (init?.body instanceof FormData) {
       const file = init.body.get("document");
-      body = { chat_id: init.body.get("chat_id"), caption: init.body.get("caption"), filename: file instanceof File ? file.name : "", content: file instanceof Blob ? await file.text() : "" };
+      body = { chat_id: init.body.get("chat_id"), caption: init.body.get("caption"), filename: file instanceof File ? file.name : "", content: file instanceof Blob ? await file.text() : "", photo_field: init.body.get("photo") };
     } else if (init?.body) body = JSON.parse(String(init.body)) as Record<string, unknown>;
     if (u.includes("api.telegram.org/file/bot")) {
       const id = u.split("/files/").pop() ?? "";
@@ -63,9 +63,11 @@ export function fakeFetch(queue: LlmReply[], files: Record<string, Uint8Array> =
       const method = u.split("/").pop() ?? "";
       tg.push({ url: u, method, body });
       if (method === "getFile") return new Response(JSON.stringify(files[String(body.file_id)] ? { ok: true, result: { file_path: `files/${String(body.file_id)}` } } : { ok: false }), { status: 200 });
+      if (method === "getMe") return new Response(JSON.stringify({ ok: true, result: { id: 1, username: "test_rafiki_bot", first_name: "Test Rafiki" } }), { status: 200 });
       if (method === "sendPoll") return new Response(JSON.stringify({ ok: true, result: { poll: { id: `poll-${tg.length}` } } }), { status: 200 });
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
+    if (u.includes("openrouter.ai/api/v1/key")) return new Response(JSON.stringify({ data: { label: "k" } }), { status: (init?.headers as Record<string, string> | undefined)?.authorization === "Bearer or-test" ? 200 : 401 });
     if (u.includes("openrouter.ai") && u.includes("/endpoints")) return new Response("{}", { status: u.includes("nonexistent") ? 404 : 200 });
     if (u.includes("openrouter.ai")) {
       llm.push({ url: u, method: "chat", body });

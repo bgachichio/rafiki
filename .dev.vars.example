@@ -1,0 +1,4 @@
+# The three values Cloudflare asks for when you deploy. Never commit real values.
+TELEGRAM_BOT_TOKEN=
+OPENROUTER_API_KEY=
+CLAIM_CODE=

@@ -1,7 +1,7 @@
 // Owning your data: /export hands over a copy, /erase everything wipes it. Both are commands only the owner can type;
 // the model has no action that reaches either (see ACTION_GATE in gates.ts).
 import type { Ctx } from "./agent.ts";
-import { decrypt } from "./crypto.ts";
+import { decrypt, keyOf } from "./crypto.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { revoke } from "./google.ts";
 import type { Telegram } from "./telegram.ts";
@@ -121,7 +121,7 @@ export async function exportStart(ctx: Ctx, tg: Telegram, chatId: number): Promi
 export async function dropGoogle(ctx: Ctx): Promise<boolean> {
   const cred = await ctx.db.prepare("SELECT enc FROM credentials WHERE provider = 'google'").bind().first<{ enc: string }>();
   if (!cred) return false;
-  try { await revoke(ctx.f, (JSON.parse(await decrypt(ctx.env.ENCRYPTION_KEY ?? "", cred.enc)) as { refresh_token: string }).refresh_token); } catch { /* revoking is best effort */ }
+  try { await revoke(ctx.f, (JSON.parse(await decrypt(await keyOf(ctx.env), cred.enc)) as { refresh_token: string }).refresh_token); } catch { /* revoking is best effort */ }
   await ctx.db.prepare("DELETE FROM credentials WHERE provider = 'google'").bind().run();
   await ctx.db.prepare("DELETE FROM cal_cache").bind().run();
   return true;
