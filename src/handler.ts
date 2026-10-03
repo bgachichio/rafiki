@@ -118,7 +118,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
     case "/writing": await startWriting(ctx, tg, chatId); return;
     case "/model": await modelCommand(ctx, tg, chatId, args); return;
     case "/cancel": {
-      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode", "dc_wait", "dc_seq"]) await setSetting(ctx.db, k, "");
+      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode", "dc_wait", "dc_seq", "import_seen", "import_prefs", "dc_after", "dc_prop"]) await setSetting(ctx.db, k, "");
       await tg.send(chatId, "Cancelled. Nothing is waiting on you now.");
       return;
     }
@@ -421,7 +421,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
     const name = d.file_name ?? "file";
     if ((await getSetting(ctx.db, "skills_wait")) === "1") { await skillUpload(ctx, tg, chatId, name, r.text); return "skill-upload"; }
-    if ((await getSetting(ctx.db, "import_wait")) === "1") { await importPlan(ctx, tg, chatId, r.text, name); return "import-file"; }
+    if ((await getSetting(ctx.db, "import_wait")) === "1") { await importPlan(ctx, tg, chatId, r.text, name, true); return "import-file"; }
     if ((await getSetting(ctx.db, "writing_wait")) === "1") { await writingSample(ctx, tg, chatId, r.text); return "writing-file"; }
     const chunks = await storeDoc(ctx, d.file_name ?? "file", d.mime_type, d.file_size ?? r.text.length, r.text);
     const head = r.text.length > 5000 ? `${r.text.slice(0, 5000)}\n[... ${r.text.length - 5000} more characters, stored in memory in ${chunks} searchable parts]` : r.text;

@@ -2,10 +2,12 @@
 import type { Ctx } from "./agent.ts";
 import { chat } from "./llm.ts";
 import { getSetting, setSetting } from "./db.ts";
-import { fileImport, parseExport, planText, undoImport, type Parsed } from "./import.ts";
+import { MAX_ITEMS, fileImport, parseExport, planText, undoImport, type Parsed } from "./import.ts";
 import { bringMenu, kmAsk, KM, startSkills } from "./knowme.ts";
 import { CATEGORIES, indexText, memoryStats } from "./memory.ts";
-import { rulesLines } from "./cards.ts";
+import { rulesLines, startSequence } from "./cards.ts";
+import { applyPreferences, parsePreferences, splitFiles, stashPreferences, takeStashed } from "./prefsimport.ts";
+import { PRESETS } from "./models.ts";
 import { loadPrefs, PREF_LABELS, setPref } from "./prefs.ts";
 import { importSkill, MAX_PER_BATCH, removeSkill, setSkillEnabled } from "./skills.ts";
 import type { Button, Telegram } from "./telegram.ts";
@@ -156,19 +158,55 @@ export async function skillsDone(ctx: Ctx, tg: Telegram, chatId: number): Promis
 }
 
 // ---- memory import ------------------------------------------------------------------------------------------------------
-export async function importPlan(ctx: Ctx, tg: Telegram, chatId: number, text: string, source: string): Promise<void> {
-  const p = parseExport(text.slice(0, 120_000));
-  await setSetting(ctx.db, "import_wait", "");
+export async function importPlan(ctx: Ctx, tg: Telegram, chatId: number, text: string, source: string, viaFile = false): Promise<void> {
+  const parts = splitFiles(text.slice(0, 120_000), source);
+  // A pair of files arrives one after the other: keep listening until both kinds are in, or the owner says done.
+  const seen = new Set(JSON.parse((await getSetting(ctx.db, "import_seen")) || "[]") as string[]);
+  if (parts.memory.trim()) seen.add("memory");
+  if (parts.preferences.trim()) seen.add("preferences");
+  const more = viaFile && seen.size < 2;
+  await setSetting(ctx.db, "import_wait", more ? "1" : "");
+  await setSetting(ctx.db, "import_seen", more ? JSON.stringify([...seen]) : "");
   await setSetting(ctx.db, "import_buf", "");
-  if (!p.items.length) { await tg.send(chatId, `I couldn't find any entries to import.${p.dropped ? ` I dropped ${p.dropped} line(s) that read as instructions to me.` : ""} Check that it follows the format, one entry per line.`); return; }
+  if (more) await tg.send(chatId, `Got ${[...seen].join(" and ")}.md. If you have the other file (${seen.has("memory") ? "preferences" : "memory"}.md), send it now. Otherwise say done.`);
+  const pref = parts.preferences.trim() ? parsePreferences(parts.preferences) : null;
+  // Standing rules from preferences.md go through the same plan and tap as the memory entries.
+  const memText = pref?.rules.length ? `${parts.memory}\n## Instructions\n${pref.rules.map((r) => `- ${r}`).join("\n")}` : parts.memory;
+  const p = parseExport(memText);
+  const pending = await getSetting(ctx.db, "import_plan");
+  if (pending && p.items.length) { // a second file adds to the plan already waiting
+    const prev = (JSON.parse(pending) as { p: Parsed }).p;
+    p.items = [...prev.items, ...p.items].slice(0, MAX_ITEMS); p.dropped += prev.dropped; p.private += prev.private;
+  }
+  if (pref) await stashPreferences(ctx, pref);
+  if (!p.items.length) {
+    if (pref) { await runPreferences(ctx, tg, chatId); return; }
+    await tg.send(chatId, `I couldn't find any entries to import.${p.dropped ? ` I dropped ${p.dropped} line(s) that read as instructions to me.` : ""} Check that it follows the format, one entry per line.`);
+    return;
+  }
   await setSetting(ctx.db, "import_plan", JSON.stringify({ source, p }));
-  await tg.send(chatId, planText(p), [[{ text: "File it", data: "imp:go" }, { text: "Cancel", data: "imp:no" }]]);
+  await tg.send(chatId, planText(p) + (pref ? "\nI also found your preferences. I will go through those with you next." : ""), [[{ text: "File it", data: "imp:go" }, { text: "Cancel", data: "imp:no" }]]);
+}
+
+/** Use the preferences found as an unconfirmed starting point, then confirm each one, then propose models. */
+export async function runPreferences(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  const pref = await takeStashed(ctx);
+  if (!pref) return;
+  const r = await applyPreferences(ctx, pref);
+  const lines = [r.lines.length ? "I read your preferences. I am using these for now, but nothing is final until you confirm each one:" : "I read your preferences file but found nothing new to set.", ...r.lines.map((l) => `- ${l}`)];
+  if (r.kept.length) lines.push(`I left alone what you already confirmed: ${r.kept.join(", ")}.`);
+  if (pref.dropped) lines.push(`I dropped ${pref.dropped} line${pref.dropped === 1 ? "" : "s"} that read as instructions aimed at me.`);
+  await tg.send(chatId, lines.join("\n"));
+  await startSequence(ctx, tg, chatId, r.keys, { models: true });
 }
 /** Text sent while waiting for an import: accumulate, and process on "done". */
 export async function importText(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
   if ((await getSetting(ctx.db, "import_wait")) !== "1") return false;
   const buf = (await getSetting(ctx.db, "import_buf")) ?? "";
-  if (/^(done|finished|that'?s all|that is all)\.?$/i.test(text.trim())) { await importPlan(ctx, tg, chatId, buf, "pasted export"); return true; }
+  if (/^(done|finished|that'?s all|that is all)\.?$/i.test(text.trim())) {
+    if (!buf.trim()) { await setSetting(ctx.db, "import_wait", ""); await setSetting(ctx.db, "import_seen", ""); await tg.send(chatId, "Okay, that is everything."); return true; }
+    await importPlan(ctx, tg, chatId, buf, "pasted export"); return true;
+  }
   const next = `${buf}\n${text}`;
   await setSetting(ctx.db, "import_buf", next.slice(0, 120_000));
   const lines = next.split("\n").filter((l) => l.trim()).length;
@@ -177,7 +215,7 @@ export async function importText(ctx: Ctx, tg: Telegram, chatId: number, text: s
   return true;
 }
 export async function importCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
-  if (data === "imp:no") { await setSetting(ctx.db, "import_plan", ""); await tg.send(chatId, "Cancelled. Nothing was filed."); return true; }
+  if (data === "imp:no") { await setSetting(ctx.db, "import_plan", ""); await tg.send(chatId, "Cancelled. Nothing was filed."); await runPreferences(ctx, tg, chatId); return true; }
   if (data !== "imp:go") return false;
   const raw = await getSetting(ctx.db, "import_plan");
   if (!raw) { await tg.send(chatId, "There's no plan waiting."); return true; }
@@ -185,6 +223,7 @@ export async function importCallback(ctx: Ctx, tg: Telegram, chatId: number, dat
   await setSetting(ctx.db, "import_plan", "");
   const r = await fileImport(ctx.db, ctx.now, source, p);
   await tg.send(chatId, `Filed ${r.added} new fact${r.added === 1 ? "" : "s"}${r.added < p.items.length ? ` (${p.items.length - r.added} were already known)` : ""}. Undo any time with /undo import ${r.id}. See them under /memory.`);
+  await runPreferences(ctx, tg, chatId);
   if ((await getSetting(ctx.db, "ob_step")) === "bring") await bringMenu(tg, chatId);
   return true;
 }
@@ -224,11 +263,6 @@ async function writingDone(ctx: Ctx, tg: Telegram, chatId: number): Promise<void
 }
 
 // ---- model choice -------------------------------------------------------------------------------------------------------
-export const PRESETS: Record<"fast" | "smart" | "media", [string, string][]> = {
-  fast: [["Claude Haiku 4.5 (default)", "anthropic/claude-haiku-4.5"], ["Gemini 3.8 Flash", "google/gemini-3.8-flash"], ["Gemini 3.5 Flash-Lite (cheapest)", "google/gemini-3.5-flash-lite"], ["GPT-5 mini", "openai/gpt-5-mini"]],
-  smart: [["Claude Sonnet 5.5 (default)", "anthropic/claude-sonnet-5.5"], ["Claude Opus 5.5", "anthropic/claude-opus-5.5"], ["Gemini 3.8 Flash", "google/gemini-3.8-flash"]],
-  media: [["Gemini 3.8 Flash (default)", "google/gemini-3.8-flash"], ["Gemini 3.5 Flash-Lite (cheapest)", "google/gemini-3.5-flash-lite"]],
-};
 export async function modelHome(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
   const e = ctx.env;
   const lines = ["AI models (through OpenRouter)", `Everyday: ${e.MODEL_FAST}`, `Deep thinking (advice, plans, decisions): ${e.MODEL_SMART}`, `Voice, photos, files, video: ${e.MODEL_MEDIA ?? e.MODEL_FAST}`, "Pick a preset below, or type /model fast <openrouter id>, /model smart <id>, /model media <id>. /model reset restores the defaults. Voice and images need a model that accepts audio and images."];

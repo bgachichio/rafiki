@@ -141,7 +141,7 @@ export async function bringMenu(tg: Telegram, chatId: number): Promise<void> {
 export async function startPaste(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
   await setSetting(ctx.db, "import_wait", "1");
   await setSetting(ctx.db, "import_buf", "");
-  await tg.send(chatId, "Copy the next message, paste it into ChatGPT, Gemini or Claude, then send me the answer. If it is long, send it as a .txt file, or in parts and then say done. I'll show you a plan before I file anything.");
+  await tg.send(chatId, "Copy the next message and paste it into Gemini, Claude, Perplexity, ChatGPT, Grok or any other assistant. It will give you two files, memory.md and preferences.md. Send me the answer as text, or save the two files and upload them here (.md is best). If it is long, send it in parts and then say done. I'll show you a plan before I file anything, and I'll confirm each preference with you.");
   await tg.send(chatId, EXPORT_PROMPT);
 }
 export async function startSkills(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {

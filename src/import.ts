@@ -5,21 +5,37 @@ import type { Category } from "./memory.ts";
 import { looksInjected } from "./skills.ts";
 
 export const MAX_ITEMS = 200;
-export const EXPORT_PROMPT = `Export everything you have stored about me and everything you have learned about me from our past conversations. Keep my own words wherever possible, especially for instructions and preferences.
+export const EXPORT_PROMPT = `I am moving to a personal assistant called Rafiki. From everything you know about me and our conversations, write TWO separate Markdown files. Keep my own words wherever possible. Do not invent anything. If you know nothing for a heading, leave that heading out.
 
-Use these headings, in this order:
-1. Instructions: rules I have asked you to follow (tone, format, "always", "never", corrections).
-2. Identity: name, location, family and relationships, languages, interests.
-3. Career: current and past roles, organisations, skills.
-4. Projects: things I built or committed to; one entry per project with purpose, status and key decisions.
-5. People: the people who matter to me, with their relationship to me.
-6. Goals: what I am working toward, with numbers and dates where I gave them.
-7. Routines and preferences: habits, schedule, tastes, how I like to work.
-8. Money and health context I chose to share (short, factual).
+FILE 1, called memory.md, with these headings:
+# memory.md
+## Identity (name, location, family and relationships, languages, interests)
+## Career
+## Projects (one entry per project: purpose, status, key decisions)
+## People (Name - how they relate to me)
+## Goals (with numbers and dates where I gave them)
+## Routines
+## Money and health (short and factual, only what I chose to share)
+Write each entry on one line as: - [YYYY-MM-DD] entry   (use [unknown] if you do not know the date)
 
-One entry per line, oldest first, in the form:
-[YYYY-MM-DD] - entry
-Use [unknown] when you do not know the date. Put the whole export in one code block, and say after it whether this is the complete set.`;
+FILE 2, called preferences.md, with these headings:
+# preferences.md
+## Call me
+- the name I like to be called
+## Replies
+- how long and in what tone I like answers (very short, direct, warm or thorough), plus anything else about style in my words
+## Reminders
+- how I like to be reminded: once, chase me until I tap Done, or once and keep it on my list until I tap Done
+- how long before events I want reminders (for example 1 day before and 1 hour before)
+- what "tomorrow" means as a time, if I have said (for example 09:00)
+## Languages
+- the languages I write in
+## Daily rhythm
+- when I want a morning brief, my quiet hours (for example 21:00-05:30), my work days
+## Rules
+- things I have told you to always or never do, in my own words
+
+Put each file in its own code block, headed by its file name, and say after each whether it is complete.`;
 
 export interface Item { section: string; category: Category; text: string; goal: boolean }
 export interface Parsed { items: Item[]; dropped: number; private: number; truncated: boolean }

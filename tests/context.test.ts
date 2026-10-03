@@ -153,7 +153,7 @@ test("import: the export is parsed, instruction-like lines are dropped, a plan i
   const s = setup();
   await owned(s);
   await handleUpdate(s.deps, msg("/import"));
-  assert.ok(sent(s.fx.tg).some((t) => /Export everything you have stored about me/.test(t)));
+  assert.ok(sent(s.fx.tg).some((t) => /write TWO separate Markdown files/.test(t)));
   await handleUpdate(s.deps, msg(EXPORT));
   assert.match(last(s), /I found 8 entries/);
   assert.match(last(s), /I dropped 2 lines that read as instructions aimed at me/);

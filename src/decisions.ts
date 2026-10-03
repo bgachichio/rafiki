@@ -4,6 +4,7 @@ import { getSetting, setSetting } from "./db.ts";
 import { loadPrefs } from "./prefs.ts";
 import { STYLE_TEXT } from "./prefs.ts";
 import { MODE_TEXT, leadsText, loadPolicy, parseLeads, setPolicyKey } from "./policy.ts";
+import { PRESETS, modelLabel, type ModelKind } from "./models.ts";
 import { parseHM } from "./time.ts";
 
 export interface Opt { id: string; label: string }
@@ -107,3 +108,15 @@ export const SPECS: Record<string, Spec> = {
 
 /** The order of the "how I work" walk-through. */
 export const SEQ = ["call_me", "remind.mode", "remind.event_leads", "remind.morning", "style", "brief_time", "quiet", "nudges.max", "lang"];
+
+const modelSpec = (kind: ModelKind, label: string, question: string): Spec => ({
+  key: `model.${kind}`, label, question,
+  options: () => PRESETS[kind].map(([l, id]) => ({ id, label: l.replace(/ \((default|cheapest)\)$/, "") })),
+  effective: async (ctx) => (await getSetting(ctx.db, `model_${kind}`)) || (kind === "fast" ? ctx.env.MODEL_FAST : kind === "smart" ? ctx.env.MODEL_SMART : ctx.env.MODEL_MEDIA ?? ctx.env.MODEL_FAST),
+  show: (v) => modelLabel(kind, v),
+  apply: async (ctx, v) => { await setSetting(ctx.db, `model_${kind}`, v); await setPolicyKey(ctx.db, ctx.now, `setting.model.${kind}`, v, "confirmed"); },
+  parse: (t) => (/^[\w.-]+\/[\w.:-]+$/.test(t.trim()) ? t.trim() : null), hint: "Type the OpenRouter model id, for example google/gemini-3.8-flash.",
+});
+SPECS["model.fast"] = modelSpec("fast", "Everyday model", "Which model should handle everyday chat, reminders and summaries?");
+SPECS["model.smart"] = modelSpec("smart", "Deep-thinking model", "Which model should handle advice, plans and decisions?");
+SPECS["model.media"] = modelSpec("media", "Voice, photo and file model", "Which model should read voice notes, photos, files and video?");

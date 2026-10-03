@@ -3,7 +3,9 @@
 import type { Ctx } from "./agent.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { SEQ, SPECS, type Opt, type Spec } from "./decisions.ts";
+import { DEFAULT_MODELS, modelLabel, proposeModels, type ModelKind } from "./models.ts";
 import { loadPolicy, markConfirmed } from "./policy.ts";
+import { loadPrefs } from "./prefs.ts";
 import type { Button, Telegram } from "./telegram.ts";
 
 interface Row { id: number; key: string; options: string; proposed: string | null; chosen: string | null; custom: string | null; state: string; multi: number; poll_id: string | null; seq: number }
@@ -17,7 +19,8 @@ export async function askDecision(ctx: Ctx, tg: Telegram, chatId: number, key: s
   const spec = SPECS[key];
   if (!spec) return false;
   const opts = await spec.options(ctx);
-  const proposed = o.proposed ?? (await spec.effective(ctx));
+  const prop = JSON.parse((await getSetting(ctx.db, "dc_prop")) || "{}") as Record<string, string>;
+  const proposed = o.proposed ?? prop[key] ?? (await spec.effective(ctx));
   await ctx.db.prepare("UPDATE decisions SET state = 'superseded' WHERE key = ? AND state IN ('open', 'review')").bind(key).run();
   const row = await ctx.db.prepare("INSERT INTO decisions (ts, key, question, options, proposed, multi, seq) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id").bind(ctx.now, key, spec.question, JSON.stringify(opts), proposed, spec.multi ? 1 : 0, o.seq ? 1 : 0).first<{ id: number }>();
   const id = Number(row?.id);
@@ -56,13 +59,19 @@ async function afterCard(ctx: Ctx, tg: Telegram, chatId: number, seq: boolean): 
   const next = rest.shift();
   await setSetting(ctx.db, "dc_seq", JSON.stringify(rest));
   if (next) await askDecision(ctx, tg, chatId, next, { seq: true });
-  else await summaryCard(ctx, tg, chatId);
+  else await endSequence(ctx, tg, chatId);
 }
 
-export async function startSequence(ctx: Ctx, tg: Telegram, chatId: number, keys: string[] = SEQ): Promise<void> {
+async function endSequence(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  await summaryCard(ctx, tg, chatId);
+  if ((await getSetting(ctx.db, "dc_after")) === "models") { await setSetting(ctx.db, "dc_after", ""); await modelProposal(ctx, tg, chatId); }
+}
+
+export async function startSequence(ctx: Ctx, tg: Telegram, chatId: number, keys: string[] = SEQ, o: { models?: boolean } = {}): Promise<void> {
   const [first, ...rest] = keys;
-  if (!first) return;
-  await tg.send(chatId, `${keys.length} quick questions about how I should work for you. Each is one tap. Anything you skip keeps a sensible default, and you can change any of it later in /preferences.`);
+  await setSetting(ctx.db, "dc_after", o.models ? "models" : "");
+  if (!first) { if (o.models) await endSequence(ctx, tg, chatId); return; }
+  await tg.send(chatId, `${keys.length} quick ${keys.length === 1 ? "question" : "questions"} about how I should work for you. Each is one tap. Anything you skip keeps a sensible default, and you can change any of it later in /preferences.`);
   await setSetting(ctx.db, "dc_seq", JSON.stringify(rest));
   await askDecision(ctx, tg, chatId, first, { seq: true });
 }
@@ -84,6 +93,7 @@ export async function summaryCard(ctx: Ctx, tg: Telegram, chatId: number): Promi
 }
 
 export async function cardCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
+  if (await modelCardCallback(ctx, tg, chatId, data)) return true;
   if (data === "dc:seq") { await startSequence(ctx, tg, chatId); return true; }
   if (data === "dc:sum:all") {
     for (const k of SEQ) { const spec = SPECS[k]!; const st = await ctx.db.prepare("SELECT status FROM pref_state WHERE key = ? OR key = ?").bind(k, `setting.${k}`).first<{ status: string }>(); if (st?.status !== "confirmed") await spec.apply(ctx, await spec.effective(ctx)); }
@@ -105,7 +115,7 @@ export async function cardCallback(ctx: Ctx, tg: Telegram, chatId: number, data:
     await afterCard(ctx, tg, chatId, d.row.seq === 1);
     return true;
   }
-  if (act === "skip") { await setSetting(ctx.db, "dc_seq", "[]"); await ctx.db.prepare("UPDATE decisions SET state = 'deferred', done_ts = ? WHERE id = ?").bind(ctx.now, d.row.id).run(); await summaryCard(ctx, tg, chatId); return true; }
+  if (act === "skip") { await setSetting(ctx.db, "dc_seq", "[]"); await ctx.db.prepare("UPDATE decisions SET state = 'deferred', done_ts = ? WHERE id = ?").bind(ctx.now, d.row.id).run(); await endSequence(ctx, tg, chatId); return true; }
   if (act === "yes") { if (!d.row.custom) return true; await finish(ctx, tg, chatId, d, "custom", d.row.custom, d.row.custom, "custom"); return true; }
   const opt = d.opts[Number(act)];
   if (!opt) return true;
@@ -137,5 +147,35 @@ export async function cardPoll(ctx: Ctx, tg: Telegram, chatId: number, pollId: s
   const picked = optionIds.map((i) => d.opts[i]?.id).filter((x): x is string => !!x);
   if (!picked.length) return true; // a retracted vote changes nothing
   await finish(ctx, tg, chatId, d, picked.join(","), null, picked.join(", "), "poll");
+  return true;
+}
+
+/** Propose the three models from what the owner shared. Nothing applies until a tap. */
+export async function modelProposal(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  const facts = (await ctx.db.prepare("SELECT text FROM facts ORDER BY id DESC LIMIT 200").bind().all<{ text: string }>()).results.map((f) => f.text).join("\n").slice(0, 20000);
+  const prefs = await loadPrefs(ctx.db);
+  const p = proposeModels(`${facts}\n${prefs.style_note ?? ""}`, prefs.lang ?? "");
+  await setSetting(ctx.db, "dc_prop", JSON.stringify({ "model.fast": p.fast, "model.smart": p.smart, "model.media": p.media }));
+  const same = (["fast", "smart", "media"] as ModelKind[]).every((k) => p[k] === DEFAULT_MODELS[k]);
+  await tg.send(chatId, [same ? "On the AI models, I suggest keeping the defaults:" : "Based on what you shared, I suggest these AI models:", `- Everyday: ${modelLabel("fast", p.fast)}`, `- Deep thinking: ${modelLabel("smart", p.smart)}`, `- Voice, photos, files: ${modelLabel("media", p.media)}`, "", ...p.reasons].join("\n"),
+    [[{ text: "Use these", data: "dc:models:use" }, { text: "Review each", data: "dc:models:review" }], [{ text: "Keep what I have", data: "dc:models:keep" }]]);
+}
+
+export async function modelCardCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
+  const m = /^dc:models:(use|review|keep)$/.exec(data);
+  if (!m) return false;
+  const keys = ["model.fast", "model.smart", "model.media"];
+  if (m[1] === "review") { await startSequence(ctx, tg, chatId, keys); return true; }
+  const prop = JSON.parse((await getSetting(ctx.db, "dc_prop")) || "{}") as Record<string, string>;
+  const lines: string[] = [];
+  for (const k of keys) {
+    const spec = SPECS[k]!;
+    const v = m[1] === "use" ? (prop[k] ?? await spec.effective(ctx)) : await spec.effective(ctx);
+    await spec.apply(ctx, v);
+    await ctx.db.prepare("INSERT INTO decisions (ts, key, question, options, proposed, chosen, state, done_ts) VALUES (?, ?, ?, '[]', ?, ?, 'confirmed', ?)").bind(ctx.now, k, spec.question, prop[k] ?? null, v, ctx.now).run();
+    lines.push(`${spec.label}: ${spec.show(v)}`);
+  }
+  await setSetting(ctx.db, "dc_prop", "");
+  await tg.send(chatId, `Saved. ${lines.join("; ")}. Change any time with /model.`);
   return true;
 }
