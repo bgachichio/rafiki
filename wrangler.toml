@@ -1,0 +1,25 @@
+name = "rafiki"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rafiki"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+MODEL_FAST = "anthropic/claude-haiku-4.5"
+MODEL_SMART = "anthropic/claude-sonnet-5.5"
+MODEL_FREE = "qwen/qwen3.8-27b:free"
+MODEL_MEDIA = "google/gemini-3.8-flash"
+MEDIA_SCALE = "1" # raise (for example 10) after moving to the paid Workers plan, to lift the media size caps
+DEFAULT_CAP_USD = "1.00"
+CONFIDENTIAL_TERMS = "" # optional: employer or client names Rafiki must keep out, comma separated
+TZ_OFFSET_MIN = "180"
+PUBLIC_URL = "" # only needed for Google Calendar sign-in: your Worker address, for example https://rafiki.yourname.workers.dev
+
+[ai]
+binding = "AI" # Workers AI, used only as the fallback for transcribing voice notes

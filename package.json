@@ -1,0 +1,28 @@
+{
+  "name": "rafiki",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rafiki: a personal agent on Telegram, running on Cloudflare Workers and D1",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test",
+    "dev": "wrangler dev",
+    "deploy": "./deploy.sh",
+    "limits": "node scripts/sync-limits.ts",
+    "scan": "./scripts/privacy-scan.sh"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261001.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  },
+  "license": "AGPL-3.0-only",
+  "author": "Brian Gachichio (https://x.com/b_gachichio)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bgachichio/rafiki.git"
+  }
+}

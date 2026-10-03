@@ -1,0 +1,23 @@
+Rafiki
+Copyright (C) 2026 Brian Gachichio
+
+Licensed under the GNU Affero General Public License, version 3 (see LICENSE).
+
+Additional terms under section 7(b) of the GNU AGPL v3 (preservation of specified
+reasonable author attributions):
+
+Any version of this program, modified or not, that presents a user interface to
+other people must keep, in its About information (the /about command and the
+bot's description), the line
+
+    Made with ❤️ by Brian Gachichio
+
+linked to https://x.com/b_gachichio, together with the link to
+https://github.com/bgachichio/rafiki. You may add your own credit beside it.
+
+The Rafiki name, the mandrill mark and the artwork in /brand are the author's own
+work. Using them to describe an unmodified or lightly configured copy of this
+program is welcome. Do not use them to suggest that a substantially different
+product is made or endorsed by the author.
+
+(Draft terms: to be confirmed by a lawyer before they are relied on.)

@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+*.log
+dist/
+wrangler.local.toml
+.notes-path
+.privacy-denylist
+# private operations files (the owner's own run log and builder contract)
+CLAUDE.md
+BUILD-BRIEF.md
+DEPLOY.md

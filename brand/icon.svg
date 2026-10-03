@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rafiki"><title>Rafiki</title><rect x="8" y="8" width="496" height="496" rx="108" fill="#fff" stroke="#000" stroke-width="12"/><g transform="translate(76 76) scale(1.5)"><g fill="none" stroke="#000" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 52C74 36 96 28 120 28C144 28 166 36 178 52"/>
+    <path d="M62 52L50 40L66 38L58 22L80 32L82 12L100 28L112 8L122 26L136 6L144 28L162 12L164 32L184 22L176 40L190 42L178 52"/>
+    <path d="M62 52C48 70 44 92 46 112C48 134 56 150 68 164L58 176L76 176L72 192L90 184L94 200"/>
+    <path d="M178 52C192 70 196 92 194 112C192 134 184 150 172 164L182 176L164 176L168 192L150 184L146 200"/>
+    <path d="M94 200C106 208 134 208 146 200"/>
+    <path d="M72 94Q94 78 112 96M168 94Q146 78 128 96"/>
+    <circle cx="92" cy="108" r="8"/>
+    <circle cx="148" cy="108" r="8"/>
+    <path d="M108 112L96 160M132 112L144 160"/>
+    <path d="M96 160Q120 178 144 160"/>
+    <path d="M86 128L76 150M154 128L164 150"/>
+    <path d="M102 184Q120 194 138 184"/>
+  </g>
+  <g fill="#000"><circle cx="92" cy="108" r="3"/><circle cx="148" cy="108" r="3"/><circle cx="110" cy="165" r="3.5"/><circle cx="130" cy="165" r="3.5"/></g></g></svg>
