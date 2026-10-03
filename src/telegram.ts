@@ -49,7 +49,7 @@ export class Telegram {
   }
 
   send(chatId: number, text: string, buttons?: Button[][], keyboard = false): Promise<unknown> {
-    const body: Record<string, unknown> = { chat_id: chatId, text: text.slice(0, 3900) };
+    const body: Record<string, unknown> = { chat_id: chatId, text: text.slice(0, 3900), link_preview_options: { is_disabled: true } }; // no big link cards from maps or X links
     if (buttons && buttons.length) {
       body.reply_markup = { inline_keyboard: buttons.map((row) => row.map((b) => (b.copy ? { text: b.text, copy_text: { text: b.copy } } : b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data.slice(0, 64) }))) };
     } else if (keyboard) {

@@ -258,11 +258,19 @@ test("calendars: noise calendars such as Phases of the Moon are off by default, 
   assert.deepEqual(r, { status: "ok", calendars: 2, events: 2 });
   assert.equal((await getEvents(s.db, T0 - 3600000, T0 + 86400000)).some((e) => e.title === "Full Moon"), false);
   await handleUpdate(s.deps, msg("/calendars"));
-  assert.match(sent(s.tgCalls).pop()!, /BGK: on\n- Family: on/);
+  assert.match(sent(s.tgCalls).pop()!, /BGK: on\n- Phases of the Moon: off\n- Family: on/);
   const keyboard = JSON.stringify(s.tgCalls.filter((c) => c.method === "sendMessage").pop()!.body.reply_markup);
   assert.match(keyboard, /Turn off: Family/);
-  await handleUpdate(s.deps, tap("cal:t:1")); // Family is the second cached calendar
+  await handleUpdate(s.deps, tap("cal:t:2")); // Family
   const names = (await getEvents(s.db, T0 - 3600000, T0 + 86400000)).map((e) => e.title);
   assert.ok(!names.includes("School concert"));
-  assert.match(sent(s.tgCalls).pop()!, /is now off/);
+  assert.match(sent(s.tgCalls).pop()!, /Family is now off/);
+  // a calendar switched off stays in the list, so it can be switched back on (found in live testing)
+  await handleUpdate(s.deps, msg("/calendars"));
+  assert.match(sent(s.tgCalls).pop()!, /- Family: off/);
+  await handleUpdate(s.deps, tap("cal:t:2"));
+  assert.match(sent(s.tgCalls).pop()!, /Family is now on/);
+  assert.ok((await getEvents(s.db, T0 - 3600000, T0 + 86400000)).some((e) => e.title === "School concert"));
+  await handleUpdate(s.deps, tap("cal:t:1")); // the Moon, hidden as noise, can be turned on
+  assert.ok((await getEvents(s.db, T0 - 3600000, T0 + 86400000)).some((e) => e.title === "Full Moon"));
 });

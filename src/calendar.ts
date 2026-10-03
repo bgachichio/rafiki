@@ -94,6 +94,8 @@ export async function syncCalendar(ctx: Ctx): Promise<SyncResult> {
     const token = await accessToken(env, f, refresh);
     const off2 = await disabledCals(db);
     const listed = await listCalendars(f, token);
+    // Every calendar the account lists stays choosable in /calendars, including ones switched off or hidden as noise.
+    await setSetting(db, "cal_list", JSON.stringify(listed.filter((c) => c.selected !== false && !/#(holiday|contacts)@/.test(c.id)).slice(0, 30).map((c) => ({ id: c.id, name: c.summary ?? c.id }))));
     const cals: typeof listed = [];
     for (const c of listed) {
       if (c.selected === false || /#(holiday|contacts)@/.test(c.id) || off2.has(c.id)) continue;
@@ -167,7 +169,14 @@ export const CALENDAR_WORDS = /\b(calendar|agenda|schedule|meetings?|appointment
 
 /** The calendars Google lists for this account, with whether Rafiki uses each one. */
 export async function calendarChoices(ctx: Ctx): Promise<{ id: string; name: string; on: boolean }[]> {
-  const rows = await ctx.db.prepare("SELECT cal_id, name FROM cal_cache").bind().all<{ cal_id: string; name: string }>();
+  let list: { id: string; name: string }[] = [];
+  try { list = JSON.parse((await getSetting(ctx.db, "cal_list")) ?? "[]") as { id: string; name: string }[]; } catch { /* fall back below */ }
+  if (!list.length) list = (await ctx.db.prepare("SELECT cal_id AS id, name FROM cal_cache").bind().all<{ id: string; name: string }>()).results;
   const off2 = await disabledCals(ctx.db);
-  return rows.results.map((r) => ({ id: r.cal_id, name: r.name, on: !off2.has(r.cal_id) }));
+  const out: { id: string; name: string; on: boolean }[] = [];
+  for (const c of list) {
+    const noiseOff = NOISE_CAL.test(c.name ?? "") && !(await getSetting(ctx.db, `cal_on:${c.id}`));
+    out.push({ id: c.id, name: c.name, on: !off2.has(c.id) && !noiseOff });
+  }
+  return out;
 }
