@@ -5,6 +5,7 @@ import type { Db } from "./db.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { AuthExpired, accessToken, googleConfigured, listCalendars, listEvents, type RawEvent } from "./google.ts";
 import { feedbackRow } from "./feedback.ts";
+import { listFeeds, syncIcal } from "./ical.ts";
 import { canNudge } from "./schedule.ts";
 import type { Telegram } from "./telegram.ts";
 import { fmtDate, fmtTime, parseLocalIso, startOfLocalDay } from "./time.ts";
@@ -117,7 +118,7 @@ export async function syncCalendar(ctx: Ctx): Promise<SyncResult> {
         await db.prepare("UPDATE cal_cache SET ts = ? WHERE cal_id = ?").bind(now, c.id).run(); // keep the last good copy
       }
     }
-    await db.prepare("DELETE FROM cal_cache WHERE ts < ?").bind(now).run(); // calendars that are gone
+    await db.prepare("DELETE FROM cal_cache WHERE ts < ? AND cal_id NOT LIKE 'ical:%'").bind(now).run(); // calendars that are gone
     await setSetting(db, "cal_last_sync", String(now));
     await setSetting(db, "cal_expired_notified", "0");
     return { status: "ok", calendars: cals.length, events: total };
@@ -128,11 +129,13 @@ export async function syncCalendar(ctx: Ctx): Promise<SyncResult> {
 
 /** Cron entry: sync every 15 minutes; tell the owner once if the connection has expired. */
 export async function maybeSync(ctx: Ctx, tg: Telegram, chatId: number): Promise<SyncResult | null> {
-  if (!googleConfigured(ctx.env)) return null;
+  const feeds = (await listFeeds(ctx)).length > 0;
+  if (!googleConfigured(ctx.env) && !feeds) return null;
   const last = Number((await getSetting(ctx.db, "cal_last_sync")) ?? 0);
   if (ctx.now - last < SYNC_EVERY_MS) return null;
-  const r = await syncCalendar(ctx);
-  if (r.status === "not_connected") return null; // nothing connected yet: no retry timer, no noise
+  const r: SyncResult = googleConfigured(ctx.env) ? await syncCalendar(ctx) : { status: "not_connected" };
+  if (feeds) { await syncIcal(ctx); await setSetting(ctx.db, "cal_last_sync", String(ctx.now)); }
+  if (r.status === "not_connected") return feeds ? { status: "ok", calendars: 0, events: 0 } : null; // nothing connected yet: no retry timer, no noise
   if (r.status === "expired" && (await getSetting(ctx.db, "cal_expired_notified")) !== "1") {
     await setSetting(ctx.db, "cal_expired_notified", "1");
     await tg.send(chatId, "Your Google Calendar connection has expired, so I can't see your schedule. Send /connect to reconnect.");
@@ -160,10 +163,13 @@ export async function meetingNudges(ctx: Ctx, tg: Telegram, chatId: number): Pro
 
 /** Re-sync first when the copy is stale, so a question about the calendar sees an event added a minute ago. */
 export async function syncIfStale(ctx: Ctx, maxAgeMs = FRESH_MS): Promise<SyncResult | null> {
-  if (!googleConfigured(ctx.env)) return null;
+  const feeds = (await listFeeds(ctx)).length > 0;
+  if (!googleConfigured(ctx.env) && !feeds) return null;
   const last = Number((await getSetting(ctx.db, "cal_last_sync")) ?? 0);
   if (!last || ctx.now - last < maxAgeMs) return null;
-  return syncCalendar(ctx);
+  const r: SyncResult = googleConfigured(ctx.env) ? await syncCalendar(ctx) : { status: "not_connected" };
+  if (feeds) { await syncIcal(ctx); await setSetting(ctx.db, "cal_last_sync", String(ctx.now)); }
+  return r;
 }
 export const CALENDAR_WORDS = /\b(calendar|agenda|schedule|meetings?|appointments?|events?|diary|free|busy|available|tomorrow|today|this week|next week|dinner|lunch)\b/i;
 
@@ -171,9 +177,11 @@ export const CALENDAR_WORDS = /\b(calendar|agenda|schedule|meetings?|appointment
 export async function calendarChoices(ctx: Ctx): Promise<{ id: string; name: string; on: boolean }[]> {
   let list: { id: string; name: string }[] = [];
   try { list = JSON.parse((await getSetting(ctx.db, "cal_list")) ?? "[]") as { id: string; name: string }[]; } catch { /* fall back below */ }
-  if (!list.length) list = (await ctx.db.prepare("SELECT cal_id AS id, name FROM cal_cache").bind().all<{ id: string; name: string }>()).results;
+  if (!list.length) list = (await ctx.db.prepare("SELECT cal_id AS id, name FROM cal_cache WHERE cal_id NOT LIKE 'ical:%'").bind().all<{ id: string; name: string }>()).results;
   const off2 = await disabledCals(ctx.db);
   const out: { id: string; name: string; on: boolean }[] = [];
+  list = list.filter((c) => !c.id.startsWith("ical:"));
+  for (const f of await listFeeds(ctx)) out.push({ id: f.id, name: f.name, on: !off2.has(f.id) });
   for (const c of list) {
     const noiseOff = NOISE_CAL.test(c.name ?? "") && !(await getSetting(ctx.db, `cal_on:${c.id}`));
     out.push({ id: c.id, name: c.name, on: !off2.has(c.id) && !noiseOff });

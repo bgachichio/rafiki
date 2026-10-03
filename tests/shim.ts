@@ -44,11 +44,12 @@ export interface Call { url: string; method: string; body: Record<string, unknow
 export type LlmReply = { status?: number; content?: string; cost?: number };
 
 /** Fake fetch. Telegram calls are recorded; OpenRouter calls pop replies from the queue. */
-export function fakeFetch(queue: LlmReply[], files: Record<string, Uint8Array> = {}): { f: typeof fetch; tg: Call[]; llm: Call[] } {
+export function fakeFetch(queue: LlmReply[], files: Record<string, Uint8Array> = {}, web: Record<string, string> = {}): { f: typeof fetch; tg: Call[]; llm: Call[] } {
   const tg: Call[] = [];
   const llm: Call[] = [];
   const f = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
+    if (web[u] !== undefined) return new Response(web[u], { status: 200 });
     let body: Record<string, unknown> = {};
     if (init?.body instanceof FormData) {
       const file = init.body.get("document");

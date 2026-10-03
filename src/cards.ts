@@ -25,7 +25,7 @@ export async function askDecision(ctx: Ctx, tg: Telegram, chatId: number, key: s
   const row = await ctx.db.prepare("INSERT INTO decisions (ts, key, question, options, proposed, multi, seq) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id").bind(ctx.now, key, spec.question, JSON.stringify(opts), proposed, spec.multi ? 1 : 0, o.seq ? 1 : 0).first<{ id: number }>();
   const id = Number(row?.id);
   const head = `${o.intro ? `${o.intro}\n\n` : ""}${spec.question}`;
-  const extras: Button[][] = [[{ text: "✏️ My own", data: `dc:${id}:own` }, { text: "Decide later", data: `dc:${id}:later` }]];
+  const extras: Button[][] = [spec.noCustom ? [{ text: "Decide later", data: `dc:${id}:later` }] : [{ text: "✏️ My own", data: `dc:${id}:own` }, { text: "Decide later", data: `dc:${id}:later` }]];
   if (o.seq) extras.push([{ text: "Use the defaults for the rest", data: `dc:${id}:skip` }]);
   if (spec.multi) {
     await tg.send(chatId, `${head}\n\nTick the languages in the poll below. You can also tap "My own" to type them.`, extras);
@@ -49,7 +49,8 @@ async function finish(ctx: Ctx, tg: Telegram, chatId: number, d: { row: Row; spe
   else await d.spec.apply(ctx, value);
   await ctx.db.prepare("UPDATE decisions SET state = 'confirmed', chosen = ?, custom = ?, done_ts = ? WHERE id = ?").bind(chosen, custom, ctx.now, d.row.id).run();
   await markConfirmed(ctx.db, ctx.now, d.row.key);
-  await tg.send(chatId, `Saved. ${d.spec.label}: ${d.spec.show(value)}.`, [[{ text: "Change", data: `dc:${d.row.id}:redo` }]]);
+  await tg.send(chatId, `Saved. ${d.spec.label}: ${d.spec.show(value)}.`, d.spec.noCustom && d.row.key.startsWith("contacts.") ? undefined : [[{ text: "Change", data: `dc:${d.row.id}:redo` }]]);
+  await d.spec.after?.(ctx, tg, chatId);
   await afterCard(ctx, tg, chatId, d.row.seq === 1);
 }
 

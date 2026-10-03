@@ -5,6 +5,7 @@ import { loadPrefs } from "./prefs.ts";
 import { STYLE_TEXT } from "./prefs.ts";
 import { MODE_TEXT, leadsText, loadPolicy, parseLeads, setPolicyKey } from "./policy.ts";
 import { PRESETS, modelLabel, type ModelKind } from "./models.ts";
+import { fileContacts, type Contact, type Keep } from "./vcard.ts";
 import { parseHM } from "./time.ts";
 
 export interface Opt { id: string; label: string }
@@ -20,6 +21,8 @@ export interface Spec {
   parse?: (text: string) => string | null; // turns what they typed into a value; null means unreadable
   hint: string; // what to type for "my own"
   multi?: boolean;
+  noCustom?: boolean; // a choice with no free-text answer
+  after?: (ctx: Ctx, tg: import("./telegram.ts").Telegram, chatId: number) => Promise<void>;
 }
 
 const hm = (v: string): string => { const m = parseHM(v); return m === null ? v : `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
@@ -120,3 +123,29 @@ const modelSpec = (kind: ModelKind, label: string, question: string): Spec => ({
 SPECS["model.fast"] = modelSpec("fast", "Everyday model", "Which model should handle everyday chat, reminders and summaries?");
 SPECS["model.smart"] = modelSpec("smart", "Deep-thinking model", "Which model should handle advice, plans and decisions?");
 SPECS["model.media"] = modelSpec("media", "Voice, photo and file model", "Which model should read voice notes, photos, files and video?");
+
+SPECS["contacts.keep"] = {
+  key: "contacts.keep", label: "Contacts to keep", question: "What should I keep from your contacts file?", noCustom: true, hint: "",
+  options: () => [{ id: "names", label: "Names and birthdays only" }, { id: "names_org", label: "Names, companies, job titles and birthdays" }, { id: "all", label: "Everything, including phone numbers and emails" }],
+  effective: async () => "names",
+  show: (v) => ({ names: "names and birthdays", names_org: "names, companies, job titles and birthdays", all: "everything, including phone numbers and emails" })[v] ?? v,
+  apply: async (ctx, v) => {
+    const raw = await getSetting(ctx.db, "vc_pending");
+    if (!raw) return;
+    const contacts = (JSON.parse(raw) as [string, string, string, string, number, string, string][]).map(([name, org, title, md, year, tel, email]): Contact => ({ name, org, title, bday: md ? { md, year: year || null } : null, tel, email }));
+    const r = await fileContacts(ctx, contacts, v as Keep);
+    await setSetting(ctx.db, "vc_pending", "");
+    await setSetting(ctx.db, "vc_result", JSON.stringify(r));
+  },
+  after: async (ctx, tg, chatId) => {
+    const r = JSON.parse((await getSetting(ctx.db, "vc_result")) || "{}") as { birthdays?: number };
+    await setSetting(ctx.db, "vc_result", "");
+    if (r.birthdays) { const { askDecision } = await import("./cards.ts"); await askDecision(ctx, tg, chatId, "contacts.bday", { intro: `${r.birthdays} of your contacts have a birthday.` }); }
+  },
+};
+SPECS["contacts.bday"] = {
+  key: "contacts.bday", label: "Birthdays", question: "Should I put birthdays in your morning brief?", noCustom: true, hint: "",
+  options: () => [{ id: "brief", label: "Yes, on the day and the day before" }, { id: "none", label: "No, keep them for when I ask" }],
+  effective: async (ctx) => (await loadPrefs(ctx.db))["birthdays.brief"] ?? "brief",
+  show: (v) => (v === "none" ? "not in the brief" : "in the brief, on the day and the day before"), apply: write("birthdays.brief"),
+};

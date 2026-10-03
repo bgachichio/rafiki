@@ -14,6 +14,7 @@ export const ACTION_GATE: Readonly<Record<string, Gate>> = {
   set_setting: "G1",
   poll: "G1", // sent only to the owner's own chat
   react: "G1",
+  calendar_link: "G1", // builds a link and a file for the owner to tap; it writes to no calendar
 };
 /** G2 and above need an approval tap. No such action exists in this release, so none is executable. */
 export function mayExecute(type: string): boolean {

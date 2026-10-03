@@ -4,6 +4,7 @@ import { loadTiers } from "./actions.ts";
 import { getSetting, markSeen, setSetting, type Db } from "./db.ts";
 import { isMenuWord } from "./gates.ts";
 import { agendaText, calendarChoices, getEvents, syncCalendar, syncIfStale } from "./calendar.ts";
+import { FEED_HELP, addFeed, looksLikeFeed, removeFeed, syncIcal } from "./ical.ts";
 import { consolidateDay } from "./consolidate.ts";
 import { authUrl, googleConfigured, makeState, redirectUri, type GoogleEnv } from "./google.ts";
 import { addFact, findFacts, fmtHit, forgetFact, memoryStats, recall } from "./memory.ts";
@@ -13,6 +14,8 @@ import { eraseText, eraseWarning, dropGoogle, exportNext, exportStart } from "./
 import { feedbackSummary, isFeedback, recordFeedback, thirtyDaysAgo } from "./feedback.ts";
 import { limitsText } from "./limits.ts";
 import { AUTHOR, SUPPORT, aboutText } from "./support.ts";
+import { offerContacts } from "./vcard.ts";
+import { mediaTick, startMediaCheck } from "./mediacheck.ts";
 import { cardCallback, cardPoll, cardText, rulesLines, startSequence } from "./cards.ts";
 import { SHORTER } from "./learn.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
@@ -53,7 +56,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /today /agenda /memory /search /remember /forget /rules /export /erase /limits /about /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -118,7 +121,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
     case "/writing": await startWriting(ctx, tg, chatId); return;
     case "/model": await modelCommand(ctx, tg, chatId, args); return;
     case "/cancel": {
-      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode", "dc_wait", "dc_seq", "import_seen", "import_prefs", "dc_after", "dc_prop"]) await setSetting(ctx.db, k, "");
+      for (const k of ["pending_edit", "import_wait", "import_buf", "import_plan", "skills_wait", "writing_wait", "km_idx", "km_mode", "dc_wait", "dc_seq", "mc", "import_seen", "import_prefs", "dc_after", "dc_prop"]) await setSetting(ctx.db, k, "");
       await tg.send(chatId, "Cancelled. Nothing is waiting on you now.");
       return;
     }
@@ -134,6 +137,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
       await tg.send(chatId, "Which should I forget?\n" + hits.map((h, i) => `${i + 1}. ${h.text}`).join("\n"), [hits.map((h, i) => ({ text: `Forget ${i + 1}`, data: `fg:${h.id}` }))]);
       return;
     }
+    case "/check": await startMediaCheck(ctx, tg, chatId); return;
     case "/rules": await startSequence(ctx, tg, chatId); return;
     case "/export": await exportStart(ctx, tg, chatId); return;
     case "/erase": {
@@ -167,7 +171,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
       return;
     }
     case "/agenda": {
-      if (!(await hasCalendar(ctx))) { await tg.send(chatId, "No calendar is connected yet. /connect sets it up."); return; }
+      if (!(await hasCalendar(ctx))) { await tg.send(chatId, `No calendar is connected yet.\n\n${FEED_HELP}`); return; }
       await syncIfStale(ctx);
       const day0 = startOfLocalDay(ctx.now, ctx.off);
       await tg.send(chatId, agendaText(await getEvents(ctx.db, day0, day0 + 2 * 86400000), ctx.now, ctx.off));
@@ -175,8 +179,9 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
     }
     case "/calendars": {
       const ch = await calendarChoices(ctx);
-      if (!ch.length) { await tg.send(chatId, "No calendar is connected yet. /connect sets it up."); return; }
-      await tg.send(chatId, "Calendars I read (tap to switch one on or off):\n" + ch.map((c) => `- ${c.name}: ${c.on ? "on" : "off"}`).join("\n"), ch.map((c, i) => [{ text: `${c.on ? "Turn off" : "Turn on"}: ${c.name}`.slice(0, 40), data: `cal:t:${i}` }]));
+      if (!ch.length) { await tg.send(chatId, `No calendar is connected yet.\n\n${FEED_HELP}\n\nFor two-way Google sign-in instead, send /connect.`); return; }
+      const rows = ch.map((c, i) => [{ text: `${c.on ? "Turn off" : "Turn on"}: ${c.name}`.slice(0, 40), data: `cal:t:${i}` }, ...(c.id.startsWith("ical:") ? [{ text: "Remove", data: `cal:rm:${i}` }] : [])]);
+      await tg.send(chatId, "Calendars I read (tap to switch one on or off):\n" + ch.map((c) => `- ${c.name}: ${c.on ? "on" : "off"}${c.id.startsWith("ical:") ? " (link)" : ""}`).join("\n") + "\n\nTo add another, paste its private iCal link here.", rows);
       return;
     }
     case "/nudges": {
@@ -258,6 +263,13 @@ async function disconnect(ctx: Ctx, tg: Telegram, chatId: number): Promise<void>
   await tg.send(chatId, had ? "Disconnected, and Google has been told to revoke my access. I keep the summaries I already wrote." : "No calendar was connected.");
 }
 
+async function feedLink(ctx: Ctx, tg: Telegram, chatId: number, url: string): Promise<void> {
+  await tg.typing(chatId);
+  const r = await addFeed(ctx, url);
+  if (ctx.msgId) await tg.api("deleteMessage", { chat_id: chatId, message_id: ctx.msgId }); // the link is a secret, so it does not stay in the chat
+  await tg.send(chatId, r.ok ? `Added ${r.name}: ${r.events} event${r.events === 1 ? "" : "s"} in the next two weeks. I can only read it. I deleted your message so the link is not left in this chat. Switch it off or remove it any time in /calendars.` : r.why);
+}
+
 async function converse(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<void> {
   await tg.typing(chatId);
   const r = await runAgent(ctx, text);
@@ -282,6 +294,7 @@ async function handleText(ctx: Ctx, tg: Telegram, chatId: number, text: string):
   if (menu === "business") { await converse(ctx, tg, chatId, "Act as my business adviser. Ask me the one question you most need answered first."); return; }
   // A spend-shaped line is logged even if the owner skipped the buttons; other free text answers the current onboarding question.
   if (await cardText(ctx, tg, chatId, t)) return;
+  if (looksLikeFeed(t)) { await feedLink(ctx, tg, chatId, t); return; }
   if (SHORTER.test(t)) await recordSignal(ctx.db, ctx.now, "shorter");
   if (await pendingEdit(ctx, tg, chatId, t)) return;
   if ((await getSetting(ctx.db, "skills_wait")) === "1" && /^(done|finished|that'?s all|that is all)\.?$/i.test(t)) { await skillsDone(ctx, tg, chatId); return; }
@@ -308,6 +321,7 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   }
   await tg.answer(cb.id);
   if (cb.message) await tg.clearButtons(chatId, cb.message.message_id);
+  if (data === "mc:start") { await startMediaCheck(ctx, tg, chatId); return; }
   if (data === "ex:start") { await exportStart(ctx, tg, chatId); return; }
   if (data === "ex:next") { await exportNext(ctx, tg, chatId); return; }
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
@@ -332,7 +346,16 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
     if (c.on) { off2.add(c.id); await setSetting(ctx.db, "cal_disabled", JSON.stringify([...off2])); await setSetting(ctx.db, `cal_on:${c.id}`, ""); await ctx.db.prepare("DELETE FROM cal_cache WHERE cal_id = ?").bind(c.id).run(); }
     else { off2.delete(c.id); await setSetting(ctx.db, "cal_disabled", JSON.stringify([...off2])); await setSetting(ctx.db, `cal_on:${c.id}`, "1"); }
     await syncCalendar(ctx);
+    await syncIcal(ctx);
     await tg.send(chatId, `${c.name} is now ${c.on ? "off" : "on"}.`);
+    return;
+  }
+  const rm = /^cal:rm:(\d+)$/.exec(data);
+  if (rm) {
+    const c = (await calendarChoices(ctx))[Number(rm[1])];
+    if (!c || !c.id.startsWith("ical:")) return;
+    await removeFeed(ctx, c.id);
+    await tg.send(chatId, `Removed ${c.name}. I no longer read it, and I deleted the stored link.`);
     return;
   }
   if (data === "cal:disc") { await disconnect(ctx, tg, chatId); return; }
@@ -398,6 +421,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
     await tg.send(chatId, `I heard: ${r.text.length > 400 ? `${r.text.slice(0, 400)}...` : r.text}`);
     await handleText(ctx, tg, chatId, r.text);
+    await mediaTick(ctx, tg, chatId, "voice");
     return "voice";
   }
   if (m.photo?.length) {
@@ -405,6 +429,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     const r = await seeImage(ctx, tg, m.photo);
     if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
     await sayAndAsk(ctx, tg, chatId, `[Photo]${cap ? ` Owner's note: ${cap}` : ""}\n${r.text}`, `${DATA} The owner sent a photo. If it is a receipt, offer to log the spend; if it is a screenshot of a message, help with the reply; otherwise answer what the caption asks, or briefly say what you see and how you can help.`);
+    await mediaTick(ctx, tg, chatId, "photo");
     return "photo";
   }
   if (m.video || m.video_note || m.animation) {
@@ -418,11 +443,12 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     const d = m.document;
     await tg.typing(chatId);
     const r = await readFile(ctx, tg, d);
-    if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
+    if (!r.ok) { await tg.send(chatId, /\.vcf$/i.test(d.file_name ?? "") ? `${r.why} Contact photos make these files big: if you can, export without photos, or send a smaller file.` : r.why); return "media-error"; }
     const name = d.file_name ?? "file";
     if ((await getSetting(ctx.db, "skills_wait")) === "1") { await skillUpload(ctx, tg, chatId, name, r.text); return "skill-upload"; }
     if ((await getSetting(ctx.db, "import_wait")) === "1") { await importPlan(ctx, tg, chatId, r.text, name, true); return "import-file"; }
     if ((await getSetting(ctx.db, "writing_wait")) === "1") { await writingSample(ctx, tg, chatId, r.text); return "writing-file"; }
+    if (/\.vcf$/i.test(name) || /vcard/i.test(d.mime_type ?? "")) { await offerContacts(ctx, tg, chatId, r.text); return "contacts"; }
     const chunks = await storeDoc(ctx, d.file_name ?? "file", d.mime_type, d.file_size ?? r.text.length, r.text);
     const head = r.text.length > 5000 ? `${r.text.slice(0, 5000)}\n[... ${r.text.length - 5000} more characters, stored in memory in ${chunks} searchable parts]` : r.text;
     if (isTextFile(d) && hasSkillFrontmatter(r.text)) {
@@ -431,6 +457,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
       return "skill-offer";
     }
     await sayAndAsk(ctx, tg, chatId, `[File: ${d.file_name ?? "file"}]${cap ? ` Owner's note: ${cap}` : ""}\n${head}`, `${DATA} The file is also now stored in permanent memory. Do what the note asks; if there is no note, give a two-line summary and say it can be searched later.`);
+    await mediaTick(ctx, tg, chatId, "file");
     return "document";
   }
   if (m.location || m.venue) {
@@ -441,6 +468,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     const where = describePlace({ lat: l.latitude, lng: l.longitude }, places);
     const named = m.venue?.title ? ` It looks like "${m.venue.title}": send /place ${m.venue.title.toLowerCase().slice(0, 30)} to name it.` : "";
     await tg.send(chatId, `Got your location (${where}). It stays private to me.${places.length || named ? named : " Name it with /place home, /place office and so on, and I'll recognise when you're there."}`);
+    await mediaTick(ctx, tg, chatId, "location");
     return "location";
   }
   if (m.contact) { await tg.send(chatId, await saveContact(ctx, m.contact)); return "contact"; }

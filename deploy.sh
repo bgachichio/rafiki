@@ -27,7 +27,7 @@ else if (mode === "webhook") {
   const r = await api("setWebhook", { url: process.env.HOOK_URL, secret_token: process.env.HOOK_SECRET, allowed_updates: ["message", "edited_message", "callback_query", "poll_answer"], drop_pending_updates: true });
   if (!r.ok) { console.log("FAIL " + JSON.stringify(r)); process.exit(2); }
   await api("setMyCommands", { commands: [
-    { command: "today", description: "Top three for today" }, { command: "rules", description: "How I remind you and work" }, { command: "memory", description: "See and change what I remember" }, { command: "preferences", description: "See and change your preferences" },
+    { command: "today", description: "Top three for today" }, { command: "rules", description: "How I remind you and work" }, { command: "check", description: "Test voice, photos, files and location" }, { command: "memory", description: "See and change what I remember" }, { command: "preferences", description: "See and change your preferences" },
     { command: "skills", description: "Your skills files" }, { command: "model", description: "Choose the AI model" }, { command: "agenda", description: "Today and tomorrow" }, { command: "calendars", description: "Choose which calendars I read" },
     { command: "where", description: "Your last shared location" }, { command: "place", description: "Name your last location" }, { command: "import", description: "Bring in memory and preferences from another AI" }, { command: "export", description: "Download everything I hold about you" },
     { command: "erase", description: "Wipe everything I hold (asks first)" }, { command: "limits", description: "What I cannot do" }, { command: "about", description: "Credits and support" }, { command: "brief", description: "Your brief now" },

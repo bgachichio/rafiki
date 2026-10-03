@@ -7,6 +7,7 @@ import { prefsLines } from "./prefs.ts";
 import { loadPolicy, policyLine } from "./policy.ts";
 import { recallSkills, type SkillHit } from "./skills.ts";
 import { addMessage, recentMessages, type Db } from "./db.ts";
+import { googleLink, icsFile, type LinkEvent } from "./cal_link.ts";
 import { classify, employerBlock, redactSecrets, termsOf, type Sens } from "./gates.ts";
 import { chat, CreditError, LlmError, type LlmEnv, type Msg } from "./llm.ts";
 import { PROMPT_VERSION, SYSTEM_PROMPT } from "./prompts.ts";
@@ -192,7 +193,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promi
     model = r.model; tin = r.tokensIn; tout = r.tokensOut; cost = r.costUsd; pref = r.providerPref;
     const p = parseAgentJson(r.text);
     roleKey = p.role;
-    const io = ctx.tg && ctx.chatId ? { poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); } } : undefined;
+    const io = ctx.tg && ctx.chatId ? { calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); } } : undefined;
     const acts = validateActions(p.actions, now, off);
     // The owner's own words decide a clear relative time ("in 2 minutes", "tomorrow at 9am"); the model's arithmetic does not.
     const when = parseWhen(text, now, off);

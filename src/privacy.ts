@@ -44,6 +44,7 @@ async function coreFile(ctx: Ctx): Promise<string> {
     imports: await all("SELECT * FROM imports ORDER BY id"),
     feedback: withWhen(await all("SELECT * FROM feedback ORDER BY id")),
     decisions: await all("SELECT id, ts, key, question, options, proposed, chosen, custom, state FROM decisions ORDER BY id"),
+    birthdays: await all("SELECT name, md, year FROM birthdays ORDER BY md"),
     preference_status: await all("SELECT key, status, ts FROM pref_state ORDER BY key"),
   };
   return JSON.stringify(body, null, 1);
@@ -153,7 +154,7 @@ export async function eraseText(ctx: Ctx, tg: Telegram, chatId: number, text: st
 }
 
 /** Tables wiped by /erase everything. Settings and the cost log are handled separately. */
-export const ERASED_TABLES = ["messages", "memory_fts", "facts", "summaries", "notes", "goals", "tasks", "reminders", "ledger", "spends", "fee_tiers", "docs", "locations", "places", "polls", "prefs", "imports", "skill_sections", "skills", "feedback", "decisions", "pref_state", "reminder_policy", "signals", "cal_cache", "credentials"] as const;
+export const ERASED_TABLES = ["messages", "memory_fts", "facts", "summaries", "notes", "goals", "tasks", "reminders", "ledger", "spends", "fee_tiers", "docs", "locations", "places", "polls", "prefs", "imports", "skill_sections", "skills", "feedback", "decisions", "pref_state", "reminder_policy", "signals", "birthdays", "cal_cache", "credentials"] as const;
 
 export async function eraseNow(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
   await dropGoogle(ctx);

@@ -15,9 +15,10 @@ export type Action =
   | { type: "note"; text: string; category: Category }
   | { type: "set_setting"; key: "brief_time" | "quiet_start" | "quiet_end"; value: string }
   | { type: "poll"; question: string; options: string[] }
-  | { type: "react"; emoji: string };
+  | { type: "react"; emoji: string }
+  | { type: "calendar_link"; title: string; startMs: number; endMs: number; location: string | null };
 
-export interface ActionIO { poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
+export interface ActionIO { calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
 const REACTIONS = ["👍", "❤", "🔥", "🙏", "🎉", "👀"];
 
 const str = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim().slice(0, max) : null);
@@ -71,6 +72,14 @@ export function validateActions(raw: unknown, now: number, off: number): Action[
         const question = str(o.question, 255);
         const options = Array.isArray(o.options) ? o.options.map((x) => str(x, 100)).filter((x): x is string => x !== null) : [];
         if (question && options.length >= 2 && options.length <= 10) out.push({ type, question, options });
+        break;
+      }
+      case "calendar_link": {
+        const title = str(o.title, 100);
+        const start = typeof o.start === "string" ? parseLocalIso(o.start, off) : null;
+        const end = typeof o.end === "string" ? parseLocalIso(o.end, off) : null;
+        if (!title || start === null || start < now - 60000) break;
+        out.push({ type, title, startMs: start, endMs: end !== null && end > start ? end : start + 3600000, location: str(o.location, 100) });
         break;
       }
       case "react": {
@@ -151,6 +160,9 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         }
         break;
       }
+      case "calendar_link":
+        if (io?.calendarLink) { await io.calendarLink(a); done.push(`Add-to-calendar link ready: ${a.title}, ${fmtDateTime(a.startMs, off)}`); }
+        break;
       case "react":
         if (io?.react) await io.react(a.emoji);
         break;

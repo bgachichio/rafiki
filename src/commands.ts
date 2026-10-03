@@ -1,6 +1,6 @@
 // The command menu Telegram shows under the "/" button. deploy.sh carries the same list; a test keeps them equal.
 export const COMMANDS: { command: string; description: string }[] = [
-  { command: "today", description: "Top three for today" }, { command: "rules", description: "How I remind you and work" }, { command: "memory", description: "See and change what I remember" },
+  { command: "today", description: "Top three for today" }, { command: "rules", description: "How I remind you and work" }, { command: "check", description: "Test voice, photos, files and location" }, { command: "memory", description: "See and change what I remember" },
   { command: "preferences", description: "See and change your preferences" }, { command: "skills", description: "Your skills files" }, { command: "model", description: "Choose the AI model" },
   { command: "agenda", description: "Today and tomorrow" }, { command: "calendars", description: "Choose which calendars I read" }, { command: "where", description: "Your last shared location" },
   { command: "place", description: "Name your last location" }, { command: "import", description: "Bring in memory and preferences from another AI" }, { command: "export", description: "Download everything I hold about you" },

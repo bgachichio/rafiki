@@ -6,6 +6,8 @@ import { canNudge, isPaused, logOut } from "./budget.ts";
 import { feedbackRow } from "./feedback.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
+import { loadPrefs } from "./prefs.ts";
+import { birthdayLine } from "./vcard.ts";
 import { kes } from "./spend.ts";
 import type { Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, inQuietHours, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
@@ -69,6 +71,8 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   const evs = await getEvents(db, dayStart, dayEnd + 86400000);
   const cal = briefLine(evs, now, off);
   if (cal) lines.push(cal);
+  const bday = (await loadPrefs(db))["birthdays.brief"] === "none" ? null : await birthdayLine(ctx);
+  if (bday) lines.push(bday);
   const clash = conflicts(evs.filter((e) => e.start < dayEnd))[0];
   if (clash) lines.push(`Heads up: ${clash[0].title} overlaps ${clash[1].title} at ${fmtTime(clash[1].start, off)}.`);
   const y = await db.prepare("SELECT COALESCE(SUM(amount_cents),0) AS a, COALESCE(SUM(fee_cents),0) AS f FROM spends WHERE ts >= ? AND ts < ?").bind(dayStart - 86400000, dayStart).first<{ a: number; f: number }>();

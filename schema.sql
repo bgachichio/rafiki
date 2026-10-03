@@ -49,3 +49,6 @@ CREATE TABLE IF NOT EXISTS pref_state (key TEXT PRIMARY KEY, status TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS reminder_policy (reminder_id INTEGER PRIMARY KEY, mode TEXT NOT NULL, gap_ms INTEGER NOT NULL, max_chase INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS signals (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT);
 CREATE INDEX IF NOT EXISTS idx_signals_kind ON signals (kind, ts);
+
+-- Birthdays from imported contacts, for the morning brief.
+CREATE TABLE IF NOT EXISTS birthdays (name TEXT NOT NULL, md TEXT NOT NULL, year INTEGER, PRIMARY KEY (name, md));

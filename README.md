@@ -24,12 +24,12 @@ This list is generated from [`src/limits.ts`](src/limits.ts) and is the same one
 - Send anything to anyone but you. No emails, texts, messages or calendar invites go out. It only writes to your own Telegram chat.
 - Move, spend or hold money. It logs spends you tell it about and adds fees from your own fee table. It has no access to M-PESA, cards or bank accounts.
 - Buy, book, sign or submit anything: forms, waivers and payments are yours to complete.
-- Change your calendar. Google Calendar is connected read-only, so it cannot add, move or delete events.
+- Change your calendar. Calendars are read-only, so it cannot add, move or delete events. It can hand you an Add to calendar button or file, which you tap yourself.
 - Browse the web, open apps or use your phone or computer.
 
 **It cannot see what you have not given it.**
 - Read your email, WhatsApp, SMS or notes. None are connected. It knows what you tell it, send it, import or share, plus the calendars you leave switched on.
-- Read a calendar you switched off with /calendars.
+- Read a calendar you switched off with /calendars, or a calendar link you removed.
 - Keep passwords, card numbers or API keys. They are stripped before anything is stored or sent to an AI model.
 
 **It cannot keep your data against your wishes.**

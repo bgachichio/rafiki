@@ -88,7 +88,7 @@ export async function seeVideo(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> 
   } catch (e) { return fail(e, "video"); }
 }
 
-const TEXT_EXT = /\.(md|markdown|txt|csv|tsv|json|log|yaml|yml|xml|html?|rtf)$/i;
+const TEXT_EXT = /\.(md|markdown|txt|csv|tsv|json|log|yaml|yml|xml|html?|rtf|vcf|ics)$/i;
 export const isTextFile = (f: TgFile): boolean => (f.mime_type ?? "").startsWith("text/") || f.mime_type === "application/json" || TEXT_EXT.test(f.file_name ?? "");
 export const isPdf = (f: TgFile): boolean => f.mime_type === "application/pdf" || /\.pdf$/i.test(f.file_name ?? "");
 
