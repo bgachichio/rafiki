@@ -81,7 +81,7 @@ async function nextFile(ctx: Ctx, st: State): Promise<{ st: State; file?: { name
     return { st: { ...st, cursor: last, n: st.n + 1 }, file: { name: `${base}-${st.n + 1}-files.json`, content: JSON.stringify(out, null, 1) } };
   }
   if (st.stage === "skills") {
-    const s = await db.prepare("SELECT id, name, description, version FROM skills WHERE id > ? ORDER BY id LIMIT 1").bind(st.cursor).first<{ id: number; name: string; description: string; version: string | null }>();
+    const s = await db.prepare("SELECT id, name, description, version FROM skills WHERE id > ? AND source NOT LIKE 'starter/%' ORDER BY id LIMIT 1").bind(st.cursor).first<{ id: number; name: string; description: string; version: string | null }>();
     if (!s) return { st: { ...st, stage: "done" } };
     const secs = (await db.prepare("SELECT heading, body FROM skill_sections WHERE skill_id = ? ORDER BY id").bind(s.id).all<{ heading: string; body: string }>()).results;
     const md = [`# ${s.name}`, s.description, ...secs.map((x) => `${x.heading}\n\n${x.body}`)].filter(Boolean).join("\n\n");

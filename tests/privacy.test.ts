@@ -77,7 +77,7 @@ test("export: sends the facts, the whole conversation and skills as files, witho
   await s.db.prepare("INSERT INTO credentials (provider, enc, ts) VALUES ('google', 'SECRETBLOB', ?)").bind(T0).run();
   await setSetting(s.db, "oauth_nonce", "NONCE123");
   await s.db.prepare("INSERT INTO skills (name, description, source, hash, ts, nsections) VALUES ('pricing', 'How to price', 'upload', 'h', ?, 1)").bind(T0).run();
-  await s.db.prepare("INSERT INTO skill_sections (skill_id, heading, body) VALUES (1, '## Rule', 'Charge more.')").bind().run();
+  await s.db.prepare("INSERT INTO skill_sections (skill_id, heading, body) SELECT id, '## Rule', 'Charge more.' FROM skills WHERE name = 'pricing'").bind().run();
   await handleUpdate(s.deps, msg("/export"));
   const files = docs(s);
   assert.ok(files.length >= 3, "core, messages, skill");
@@ -86,6 +86,7 @@ test("export: sends the facts, the whole conversation and skills as files, witho
   assert.ok(all.includes("message number 39") && all.includes("message number 0"));
   assert.ok(all.includes("Charge more."));
   assert.ok(!all.includes("SECRETBLOB") && !all.includes("NONCE123"), "credentials and nonces never leave");
+  assert.ok(!all.includes("chief-of-staff"), "the starter skills are Rafiki's, not the owner's, so they are not exported");
   assert.ok(files.every((f) => /^rafiki-export-03-11-2026-\d+-/.test(String(f.body.filename))));
   assert.ok(sent(s.fx.tg).at(-1)!.startsWith("That is everything"));
 });

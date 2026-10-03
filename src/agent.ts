@@ -6,11 +6,11 @@ import { fmtHit, ftsQuery, recall, type Hit } from "./memory.ts";
 import { prefsLines } from "./prefs.ts";
 import { loadPolicy, policyLine } from "./policy.ts";
 import { recallSkills, type SkillHit } from "./skills.ts";
-import { addMessage, recentMessages, type Db } from "./db.ts";
+import { addMessage, getSetting, recentMessages, type Db } from "./db.ts";
 import { googleLink, icsFile, type LinkEvent } from "./cal_link.ts";
 import { classify, employerBlock, redactSecrets, termsOf, type Sens } from "./gates.ts";
 import { chat, CreditError, LlmError, type LlmEnv, type Msg } from "./llm.ts";
-import { PROMPT_VERSION, SYSTEM_PROMPT } from "./prompts.ts";
+import { PROMPT_VERSION, systemPromptFor } from "./prompts.ts";
 import { kes } from "./spend.ts";
 import { describePlace, LOCATION_WORDS } from "./media.ts";
 import type { Button, Fetch, Telegram } from "./telegram.ts";
@@ -170,7 +170,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promi
   const wantsLocation = LOCATION_WORDS.test(text);
   const context = withContext ? await buildContext(db, now, off, sens === "S2" || wantsLocation, hits, wantsLocation, skillHits) : `NOW: ${fmtDateTime(now, off)} (East Africa Time).`;
   const messages: Msg[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPromptFor((await getSetting(db, "bot_name")) ?? "Rafiki") },
     { role: "system", content: context },
     ...history.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user", content: m.text })),
     { role: "user", content: hint ? `${text}\n\n[context hint, not from the owner: ${hint}]` : text },

@@ -20,7 +20,7 @@ import { cardCallback, cardPoll, cardText, rulesLines, startSequence } from "./c
 import { SHORTER } from "./learn.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
 import { onboardingCallback, onboardingText, startOnboarding } from "./onboarding.ts";
-import { hasSkillFrontmatter } from "./skills.ts";
+import { hasSkillFrontmatter, installStarter } from "./skills.ts";
 import { importCallback, importPlan, importsList, importText, memoryCallback, memoryHome, modelCallback, modelCommand, pendingEdit, prefsCallback, prefsHome, reportSkill, skillCommand, skillsCallback, skillsDone, skillsHome, skillUpload, undoCommand, writingSample } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
 import { feeFor, kes, parseFees, parseSpendLine } from "./spend.ts";
@@ -50,7 +50,7 @@ function eq(a: string, b: string): boolean {
 }
 
 const HELP = [
-  "I'm Rafiki. Talk to me like a person. Examples:",
+  "Talk to me like a person. Examples:",
   "- remind me to call Sam tomorrow 9am",
   "- lunch 650 mpesa (logs a spend)",
   "- what should I do first today?",
@@ -499,6 +499,7 @@ export async function handleUpdate(d: Deps, u: TgUpdate): Promise<string> {
     if (m && d.env.CLAIM_CODE && eq(m[1] ?? "", d.env.CLAIM_CODE)) {
       await setSetting(d.db, "owner_chat_id", String(from.id));
       await setSetting(d.db, "owner_name", from.first_name ?? "there");
+      await installStarter(d.db, d.now); // the general playbooks Rafiki ships with; the owner can replace any of them
       await startOnboarding(ctx, tg, chatId, from.first_name ?? "there");
       return "claimed";
     }

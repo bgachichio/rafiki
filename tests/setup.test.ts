@@ -117,3 +117,11 @@ test("the command menu: deploy.sh and the code carry the same commands", () => {
   const sh = readFileSync(new URL("../deploy.sh", import.meta.url), "utf8");
   for (const c of COMMANDS) assert.ok(sh.includes(`command: "${c.command}"`), `deploy.sh is missing /${c.command}`);
 });
+
+test("bot name: what the owner called their bot is used in the greeting and the system prompt", async () => {
+  const { systemPromptFor, ONBOARD_GREETING, SYSTEM_PROMPT } = await import("../src/prompts.ts");
+  assert.equal(systemPromptFor("Rafiki"), SYSTEM_PROMPT);
+  assert.match(systemPromptFor("Juma"), /You are Juma \(the assistant software is called Rafiki\), a personal agent on Telegram/);
+  assert.match(ONBOARD_GREETING("Sam", "Juma"), /Hi Sam, I'm Juma\./);
+  assert.match(ONBOARD_GREETING("Sam"), /I'm Rafiki\./);
+});

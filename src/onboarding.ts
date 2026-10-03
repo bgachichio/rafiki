@@ -12,7 +12,7 @@ const MORE = "In short: I can record reminders, tasks, goals, your customer ledg
 export async function startOnboarding(ctx: Ctx, tg: Telegram, chatId: number, name: string): Promise<void> {
   if (!(await getSetting(ctx.db, "brief_time"))) await setSetting(ctx.db, "brief_time", "08:00");
   await setSetting(ctx.db, "ob_step", "help");
-  await tg.send(chatId, ONBOARD_GREETING(name), [
+  await tg.send(chatId, ONBOARD_GREETING(name, (await getSetting(ctx.db, "bot_name")) ?? "Rafiki"), [
     [{ text: "Run my week", data: "ob:r:week" }, { text: "My money", data: "ob:r:money" }],
     [{ text: "My goals", data: "ob:r:goals" }, { text: "My business", data: "ob:r:business" }],
     [{ text: "Just talk", data: "ob:r:talk" }],

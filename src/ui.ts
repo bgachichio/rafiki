@@ -9,7 +9,7 @@ import { rulesLines, startSequence } from "./cards.ts";
 import { applyPreferences, parsePreferences, splitFiles, stashPreferences, takeStashed } from "./prefsimport.ts";
 import { PRESETS } from "./models.ts";
 import { loadPrefs, PREF_LABELS, setPref } from "./prefs.ts";
-import { importSkill, MAX_PER_BATCH, removeSkill, setSkillEnabled } from "./skills.ts";
+import { importSkill, isStarter, markStarterRemoved, MAX_PER_BATCH, removeSkill, restoreStarter, setSkillEnabled } from "./skills.ts";
 import type { Button, Telegram } from "./telegram.ts";
 import { fmtDate } from "./time.ts";
 
@@ -109,23 +109,29 @@ export async function prefsCallback(ctx: Ctx, tg: Telegram, chatId: number, data
 
 // ---- skills -------------------------------------------------------------------------------------------------------------
 export async function skillsHome(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
-  const r = await ctx.db.prepare("SELECT name, description, version, enabled, nsections FROM skills ORDER BY name").bind().all<{ name: string; description: string; version: string | null; enabled: number; nsections: number }>();
+  const r = await ctx.db.prepare("SELECT name, description, version, enabled, nsections, source FROM skills ORDER BY name").bind().all<{ name: string; description: string; version: string | null; enabled: number; nsections: number; source: string }>();
   const lines = [`Skills (${r.results.length})`];
-  for (const s of r.results) lines.push(`- ${s.name}${s.version ? ` v${s.version}` : ""}${s.enabled ? "" : " [off]"}: ${clip(s.description || "no description", 90)} (${s.nsections} sections)`);
+  for (const s of r.results) lines.push(`- ${s.name}${s.version ? ` v${s.version}` : ""}${isStarter(s.source) ? " [starter]" : ""}${s.enabled ? "" : " [off]"}: ${clip(s.description || "no description", 90)} (${s.nsections} sections)`);
   if (!r.results.length) lines.push("None yet. Add some and I'll use them as my playbooks.");
-  lines.push("/skill off <name>, /skill on <name>, /skill remove <name>");
-  await tg.send(chatId, lines.join("\n").slice(0, 3800), [[{ text: "Add skills", data: "sk:add" }]]);
+  lines.push("[starter] skills ship with Rafiki. Upload a skill with the same name to replace one with yours. /skill off <name>, /skill on <name>, /skill remove <name>");
+  await tg.send(chatId, lines.join("\n").slice(0, 3800), [[{ text: "Add skills", data: "sk:add" }, { text: "Restore starter skills", data: "sk:restore" }]]);
 }
 export async function skillCommand(ctx: Ctx, tg: Telegram, chatId: number, args: string): Promise<void> {
   const [verb, ...rest] = args.trim().split(/\s+/);
   const name = rest.join(" ");
   if (!verb || !name) { await tg.send(chatId, "Use /skill off <name>, /skill on <name> or /skill remove <name>."); return; }
-  if (verb === "remove") { await tg.send(chatId, (await removeSkill(ctx.db, name)) ? `Removed ${name}. Your original file is untouched.` : "I don't have a skill by that name."); return; }
+  if (verb === "remove") {
+    const src = await ctx.db.prepare("SELECT source FROM skills WHERE name = ?").bind(name).first<{ source: string }>();
+    const ok = await removeSkill(ctx.db, name);
+    if (ok && src && isStarter(src.source)) await markStarterRemoved(ctx.db, name);
+    await tg.send(chatId, ok ? `Removed ${name}.${src && isStarter(src.source) ? " It stays removed until you tap Restore starter skills in /skills." : " Your original file is untouched."}` : "I don't have a skill by that name."); return;
+  }
   if (verb === "on" || verb === "off") { await tg.send(chatId, (await setSkillEnabled(ctx.db, name, verb === "on")) ? `${name} is now ${verb}.` : "I don't have a skill by that name."); return; }
   await tg.send(chatId, "Use /skill off <name>, /skill on <name> or /skill remove <name>.");
 }
 export async function skillsCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
   if (data === "sk:add") { await startSkills(ctx, tg, chatId); return true; }
+  if (data === "sk:restore") { const n = await restoreStarter(ctx.db, ctx.now); await tg.send(chatId, n ? `Restored ${n} starter skill${n === 1 ? "" : "s"}. Any you replaced with your own are left as yours.` : "Nothing to restore: every starter skill is already here, or you replaced it with your own."); return true; }
   const m = /^sk:yes:(\d+)$/.exec(data);
   if (m) {
     const d = await ctx.db.prepare("SELECT name, text FROM docs WHERE id = ?").bind(Number(m[1])).first<{ name: string; text: string }>();

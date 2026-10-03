@@ -74,6 +74,8 @@ BUSINESS ADVISER - advise an owner on cash, pricing, customers, operations and g
 - Hiring, delegation, process: write the checklist or the SOP, short.`;
 
 export const SYSTEM_PROMPT = `${CORE}\n\n${ROLES}`;
+/** The system prompt in the name the owner gave their bot (it defaults to Rafiki). */
+export const systemPromptFor = (bot: string): string => (bot && bot !== "Rafiki" ? SYSTEM_PROMPT.replace("You are Rafiki,", `You are ${bot} (the assistant software is called Rafiki),`) : SYSTEM_PROMPT);
 
-export const ONBOARD_GREETING = (name: string): string =>
-  `Hi ${name}, I'm Rafiki. I'm your chief of staff, adviser, coach and business partner in one chat. I work for you and only you.\n\nWhat would you like help with first?`;
+export const ONBOARD_GREETING = (name: string, bot = "Rafiki"): string =>
+  `Hi ${name}, I'm ${bot}. I'm your chief of staff, adviser, coach and business partner in one chat. I work for you and only you.\n\nWhat would you like help with first?`;

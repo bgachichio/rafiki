@@ -1,6 +1,8 @@
 // Skills files: the owner's own playbooks. Imported by upload only, split by heading, indexed, and retrieved by section.
 // A skill shapes how Rafiki advises. It can never add a tool or widen what Rafiki may do: actions are validated in code.
 import type { Db } from "./db.ts";
+import { getSetting, setSetting } from "./db.ts";
+import { STARTER_SKILLS } from "./starter.gen.ts";
 
 export const MAX_PER_BATCH = 30;
 export const MAX_TOTAL = 100;
@@ -132,4 +134,34 @@ export async function recallSkills(db: Db, query: string, ftsQ: string | null, l
   }
   void query;
   return out;
+}
+
+// ---- the Starter Pack: general playbooks that ship with Rafiki. The owner's own skills replace them by name. ---------------------
+
+export const isStarter = (source: string): boolean => source.startsWith("starter/");
+
+/** Put the Starter Pack in place. A skill the owner removed stays removed, and one they replaced is left alone; an unchanged-by-owner one is refreshed when the pack improves. */
+export async function installStarter(db: Db, now: number): Promise<number> {
+  const removed = new Set(JSON.parse((await getSetting(db, "starter_removed")) || "[]") as string[]);
+  let n = 0;
+  for (const [file, text] of STARTER_SKILLS) {
+    const name = parseSkill(file, text).name;
+    if (removed.has(name)) continue;
+    const have = await db.prepare("SELECT source FROM skills WHERE name = ?").bind(name).first<{ source: string }>();
+    if (have && !isStarter(have.source)) continue; // the owner replaced it
+    const r = await importSkill(db, now, `starter/${file}`, text);
+    if (r.ok && r.status !== "same") n++;
+  }
+  return n;
+}
+
+export async function markStarterRemoved(db: Db, name: string): Promise<void> {
+  const removed = new Set(JSON.parse((await getSetting(db, "starter_removed")) || "[]") as string[]);
+  removed.add(name);
+  await setSetting(db, "starter_removed", JSON.stringify([...removed]));
+}
+export async function restoreStarter(db: Db, now: number): Promise<number> {
+  await setSetting(db, "starter_removed", "[]");
+  // restoring also puts back a starter skill the owner replaced? No: a replacement is theirs. Only missing ones return.
+  return installStarter(db, now);
 }
