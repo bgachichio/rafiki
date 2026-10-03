@@ -1,7 +1,11 @@
 // Rewrites the generated "cannot do" blocks from src/limits.ts: always in README.md, and in the author's own pages
 // when a notes folder is set (RAFIKI_NOTES, or a path in the ignored file .notes-path). Run: npm run limits
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { EXPORT_PROMPT } from "../src/import.ts";
 import { limitsHtml, limitsMarkdown } from "../src/limits.ts";
+
+const promptHtml = (): string => EXPORT_PROMPT.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const PROMPT_MARK: [string, string] = ["<!-- prompt:start -->", "<!-- prompt:end -->"];
 
 const root = new URL("..", import.meta.url).pathname;
 export const NOTES: string = process.env.RAFIKI_NOTES ?? (existsSync(`${root}.notes-path`) ? readFileSync(`${root}.notes-path`, "utf8").trim() : "");
@@ -10,6 +14,8 @@ export const TARGETS: { path: string; render: () => string; wrap: [string, strin
   { path: `${root}README.md`, render: limitsMarkdown, wrap: MARK, optional: false },
   ...(NOTES ? [
     { path: `${NOTES}/site/index.html`, render: limitsHtml, wrap: MARK, optional: true },
+    { path: `${NOTES}/site/setup/index.html`, render: limitsHtml, wrap: MARK, optional: true },
+    { path: `${NOTES}/site/setup/index.html`, render: promptHtml, wrap: PROMPT_MARK, optional: true },
     { path: `${NOTES}/site/rafiki-launch.md`, render: limitsMarkdown, wrap: MARK, optional: true },
     { path: `${NOTES}/21-what-rafiki-cannot-do.md`, render: limitsMarkdown, wrap: MARK, optional: true },
   ] : []),
