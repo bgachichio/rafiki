@@ -21,3 +21,11 @@ repos:
       - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: privacy-scan
+        name: privacy scan (private deny-list, skipped when absent)
+        entry: ./scripts/privacy-scan.sh
+        language: system
+        pass_filenames: false
+        always_run: true
