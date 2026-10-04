@@ -120,7 +120,7 @@ test("consolidation: a day becomes a summary and facts, once, using zero-retenti
 
 test("consolidation: thin days are skipped; a model failure is logged and does not throw", async () => {
   const day = Date.UTC(2026, 10, 1, 21, 0);
-  const s = setup([{ status: 500 }], day + 30 * 3600000);
+  const s = setup([{ status: 500 }, { status: 500 }], day + 30 * 3600000);
   await addMessage(s.db, day + 1000, "user", "hi");
   assert.equal((await consolidateDay(s.ctx(day + 30 * 3600000), day)).status, "skip");
   await addMessage(s.db, day + 2000, "assistant", "hello");

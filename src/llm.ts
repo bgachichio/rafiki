@@ -46,7 +46,7 @@ function prefLabel(p: Pref): string {
   return p ? (p.zdr ? "zdr" : "data_collection=deny") : "none";
 }
 
-async function once(env: LlmEnv, f: Fetch, model: string, messages: Msg[], pref: Pref, maxTokens: number): Promise<Response> {
+async function once1(env: LlmEnv, f: Fetch, model: string, messages: Msg[], pref: Pref, maxTokens: number): Promise<Response> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 28000);
   try {
@@ -63,6 +63,16 @@ async function once(env: LlmEnv, f: Fetch, model: string, messages: Msg[], pref:
     });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// A network failure (not our own timeout) becomes a synthetic 599 so the retry below treats it like a 5xx.
+async function once(env: LlmEnv, f: Fetch, model: string, messages: Msg[], pref: Pref, maxTokens: number): Promise<Response> {
+  try {
+    return await once1(env, f, model, messages, pref, maxTokens);
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw e;
+    return new Response("", { status: 599 });
   }
 }
 
@@ -83,6 +93,11 @@ export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens:
     if (opts.sens !== "S0" || opts.model) throw new CreditError("credit exhausted"); // media and personal content never fall back to a free model
     model = env.MODEL_FREE;
     pref = undefined;
+    res = await once(env, f, model, opts.messages, pref, maxTokens);
+  }
+  // One short retry on a provider hiccup (5xx, rate limit, timeout) so a single blip does not become a failed turn.
+  if (res.status >= 500 || res.status === 429 || res.status === 408) {
+    await new Promise((r) => setTimeout(r, 800));
     res = await once(env, f, model, opts.messages, pref, maxTokens);
   }
   if (!res.ok) throw new LlmError(`model request failed (${res.status})`);

@@ -254,7 +254,7 @@ test("monday ledger check: Mondays only, once, within the interrupt budget and q
 });
 
 test("model failure: the user gets a plain message, not a crash, and the failure is logged", async () => {
-  const s = setup([{ status: 500 }]);
+  const s = setup([{ status: 500 }, { status: 500 }]);
   await claim(s);
   await handleUpdate(s.deps, msg("help me plan the quarter"));
   assert.ok(sent(s.fx.tg).some((t) => /Something went wrong on my side while thinking/.test(t)));
