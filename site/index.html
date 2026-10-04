@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Rafiki - a friend who follows up</title>
+<meta name="description" content="Rafiki is a personal assistant in Telegram. It remembers what you are working on, chases what you drop, and asks before it acts. Free, open source, and yours: your bot, your AI key, your data.">
+<link rel="canonical" href="https://rafiki.gachichio.org/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Rafiki - a friend who follows up">
+<meta property="og:description" content="A personal assistant in Telegram that asks before it acts. Free and open source. Your bot, your key, your data.">
+<meta property="og:url" content="https://rafiki.gachichio.org/">
+<meta property="og:image" content="https://rafiki.gachichio.org/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://rafiki.gachichio.org/og-image.png">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icons/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="icon" href="brand/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('ui.theme') || 'system';
+    var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+    document.documentElement.dataset.fontScale = localStorage.getItem('ui.fontScale') || 'default';
+  } catch (e) {}
+})();
+</script>
+<style>
+@font-face{font-family:'Inter Variable';src:url(fonts/InterVariable.woff2) format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'Courier Prime';src:url(fonts/CourierPrime-Regular.woff2) format('woff2');font-weight:400;font-display:swap}
+:root{
+  --font-scale:1;
+  --paper:#F5F0EB;--paper-2:#ECE6E0;--ink:#1A1A18;--ink-2:#4A4743;--line:#CFC8C0;--mark:#7DB8A3;--accent:#1F6B50;--on-accent:#fff;--panel:#FBF8F5;
+  --mono:'Courier Prime','IBM Plex Mono',ui-monospace,monospace;--sans:'Inter Variable',system-ui,sans-serif;--r:14px;
+}
+.dark{--paper:#151513;--paper-2:#1E1E1B;--ink:#EEEAE4;--ink-2:#B5AFA7;--line:#3A3833;--mark:#5FA68E;--accent:#8ADBB8;--on-accent:#0C2A1E;--panel:#1A1A17}
+[data-font-scale="compact"]{--font-scale:.9375}
+[data-font-scale="large"]{--font-scale:1.125}
+[data-font-scale="xlarge"]{--font-scale:1.25}
+html{font-size:calc(1rem * var(--font-scale));scroll-behavior:smooth}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 1rem/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:6px}
+.wrap{max-width:38rem;margin:0 auto;padding:0 1.5rem}
+.skip{position:absolute;left:-999px;top:0;background:var(--ink);color:var(--paper);padding:.75rem 1rem;border-radius:8px;z-index:50}
+.skip:focus{left:1rem;top:1rem}
+.mono{font-family:var(--mono)}
+/* top: the mark, small and top-left, like a signature */
+header.top{position:relative}
+header.top .wrap{display:flex;justify-content:space-between;align-items:flex-start;padding-top:1.25rem}
+.logo{display:block;width:3.5rem;height:3.5rem;color:var(--ink)}
+.icon-btn{width:2.75rem;height:2.75rem;border-radius:999px;background:transparent;border:0;color:var(--ink-2);display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{background:var(--paper-2)}
+.icon-btn svg{width:1.25rem;height:1.25rem}
+.pop{position:absolute;right:1.5rem;top:4rem;width:min(20rem,calc(100vw - 3rem));background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1.25rem;z-index:30}
+.pop[hidden]{display:none}
+.pop h2{font:600 .9375rem/1.5 var(--sans);margin:0 0 .5rem}
+.seg{display:flex;gap:.375rem;flex-wrap:wrap;margin-bottom:1rem}
+.seg button{min-height:2.5rem;padding:0 .9rem;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 .875rem var(--sans);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+/* the text: plain, bold at the start, like a letter */
+main{padding-bottom:1rem;min-height:calc(100svh - 16.5rem)}
+.lead{font:600 clamp(1.375rem,4.2vw,1.75rem)/1.35 var(--sans);letter-spacing:-.012em;margin:4rem 0 1.5rem}
+p{margin:0 0 1.1rem}
+.quiet{color:var(--ink-2)}
+.cta{margin:3rem 0 .5rem}
+.hl{position:relative;display:inline-block;padding:0 .15rem .85rem;font:600 1.125rem/1.3 var(--sans);text-decoration:none}
+.hl svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:.9rem;pointer-events:none}
+.hl svg path{stroke:var(--mark);stroke-width:9;stroke-linecap:round;fill:none;opacity:.95}
+.hl:hover svg path{stroke:var(--accent)}
+.alt{margin:1rem 0 0;font-size:.9375rem;color:var(--ink-2)}
+.alt a{color:var(--ink)}
+.fine{font-size:.8125rem;color:var(--ink-2)}
+h2{font:600 1.125rem/1.4 var(--sans);letter-spacing:-.006em;margin:4rem 0 1rem}
+.rule{border:0;border-top:1px solid var(--line);margin:3.5rem 0 0}
+/* the end */
+footer{padding:1.5rem 0 2rem}
+footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;font-size:.875rem;color:var(--ink-2)}
+footer a{text-decoration:none;margin-right:1rem;white-space:nowrap}
+footer a:hover{text-decoration:underline}
+footer .name{color:var(--ink);font-weight:500}
+button.link{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;margin-right:1rem;white-space:nowrap}
+button.link:hover{text-decoration:underline}
+/* support sheet */
+dialog.sheet{border:0;padding:0;background:var(--paper);color:var(--ink);width:100%;max-width:32rem;margin:auto auto 0;border-radius:22px 22px 0 0}
+dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
+.sheet-in{padding:1.5rem 1.25rem 2rem}
+.sheet-in h2{font:400 1.5rem/2rem var(--mono);margin:0 0 .5rem}
+.sheet-in>p{margin:0 0 1.25rem;font-size:.875rem;color:var(--ink-2)}
+.opt{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:1rem;margin-bottom:.75rem}
+.opt h3{font:500 1rem/1.5 var(--sans);margin:0}
+.opt p{margin:.125rem 0 .75rem;font-size:.8125rem;color:var(--ink-2)}
+.well{font:400 .8125rem/1.25rem ui-monospace,monospace;background:var(--paper-2);border-radius:10px;padding:.625rem .75rem;word-break:break-all;margin-bottom:.75rem}
+.opt .row{display:flex;gap:.5rem;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:2.75rem;padding:0 1.1rem;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 .875rem var(--sans);text-decoration:none;cursor:pointer}
+.btn:hover{background:var(--paper-2)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}.js .msg{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a href="/" aria-label="Rafiki, home"><svg class="logo" viewBox="0 0 240 240" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 52C74 36 96 28 120 28C144 28 166 36 178 52"/>
+    <path d="M62 52L50 40L66 38L58 22L80 32L82 12L100 28L112 8L122 26L136 6L144 28L162 12L164 32L184 22L176 40L190 42L178 52"/>
+    <path d="M62 52C48 70 44 92 46 112C48 134 56 150 68 164L58 176L76 176L72 192L90 184L94 200"/>
+    <path d="M178 52C192 70 196 92 194 112C192 134 184 150 172 164L182 176L164 176L168 192L150 184L146 200"/>
+    <path d="M94 200C106 208 134 208 146 200"/>
+    <path d="M72 94Q94 78 112 96M168 94Q146 78 128 96"/>
+    <circle cx="92" cy="108" r="8"/>
+    <circle cx="148" cy="108" r="8"/>
+    <path d="M108 112L96 160M132 112L144 160"/>
+    <path d="M96 160Q120 178 144 160"/>
+    <path d="M86 128L76 150M154 128L164 150"/>
+    <path d="M102 184Q120 194 138 184"/>
+  </g>
+  <g fill="currentColor"><circle cx="92" cy="108" r="3"/><circle cx="148" cy="108" r="3"/><circle cx="110" cy="165" r="3.5"/><circle cx="130" cy="165" r="3.5"/></g></svg></a>
+    <button class="icon-btn" id="gear" aria-label="Settings" aria-expanded="false" aria-controls="pop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+  <div class="pop" id="pop" hidden>
+    <h2>Lighting</h2>
+    <div class="seg" id="seg-theme"><button data-v="system" aria-pressed="true">Auto</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button></div>
+    <h2>Text size</h2>
+    <div class="seg" id="seg-font"><button data-v="compact" aria-pressed="false">Compact</button><button data-v="default" aria-pressed="true">Default</button><button data-v="large" aria-pressed="false">Large</button><button data-v="xlarge" aria-pressed="false">Extra large</button></div>
+  </div>
+
+</header>
+
+<main id="main"><div class="wrap" id="top">
+  <p class="lead">Rafiki is a personal assistant that lives in Telegram. It remembers what you are working on, chases what you drop, and asks before it acts.</p>
+  <p>There is no new app and no dashboard to check. You message it, or send a voice note, a photo or your location. You run your own copy, with your own bot, your own AI key and your own data, and the author never sees your messages. It is free and open source.</p>
+
+  <p class="cta"><a class="hl" href="https://gachichio.org/rafiki/setup/">Set up your Rafiki, free<svg viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path d="M4 8 C40 3, 90 11, 140 6 S240 4, 296 8"/></svg></a></p>
+  <p class="alt">Five steps, about 12 minutes. Want the detail first? <a href="https://gachichio.org/rafiki/">Learn more</a>.</p>
+</div></main>
+
+<footer>
+  <div class="wrap">
+    <div>Made with ❤️ by <a class="name" href="https://x.com/b_gachichio" target="_blank" rel="noopener noreferrer">Brian Gachichio</a></div>
+    <div><button class="link" id="support-open" type="button">☕ Support</button><a href="https://gachichio.org/rafiki/">Learn more</a><a href="https://github.com/bgachichio/rafiki" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://gachichio.org">gachichio.org</a></div>
+  </div>
+</footer>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-h">
+  <div class="sheet-in">
+    <h2 id="sheet-h">Support</h2>
+    <p>This page is free and has no ads. If it saved you time, you can help keep it that way. Payments leave this page only when you tap.</p>
+    <div class="opt"><h3>Card or M-Pesa</h3><p>Opens Paystack in a new tab</p><div class="row"><a class="btn btn-tonal" id="o-pay" target="_blank" rel="noopener noreferrer">Open Paystack</a></div></div>
+    <div class="opt"><h3>Bitcoin, Lightning</h3><p>Instant, near-zero fees</p><div class="well" id="w-ln"></div><div class="row"><button class="btn btn-tonal" data-copy="ln" type="button">Copy</button><a class="btn btn-ghost" id="o-ln">Open wallet</a></div></div>
+    <div class="opt"><h3>Bitcoin, on-chain (Taproot)</h3><p>Taproot address, any Bitcoin wallet</p><div class="well" id="w-btc"></div><div class="row"><button class="btn btn-tonal" data-copy="btc" type="button">Copy</button><a class="btn btn-ghost" id="o-btc">Open wallet</a></div></div>
+    <div class="row" style="margin-top:1rem"><button class="btn btn-ghost" id="support-close" type="button">Close</button></div>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var root = document.documentElement; root.classList.add('js');
+  var SUPPORT = { pay: 'https://paystack.shop/pay/gachichio', ln: 'gachichio@walletofsatoshi.com', btc: 'bc1ptrd8ykgu046nkwjml4kvtke0vz6ga0cmhccmgkpspwuswrasjspqq6yfu6' };
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function get(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  var gear = document.getElementById('gear'), pop = document.getElementById('pop');
+  gear.addEventListener('click', function () { var o = pop.hidden; pop.hidden = !o; gear.setAttribute('aria-expanded', String(o)); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !pop.hidden) { pop.hidden = true; gear.setAttribute('aria-expanded', 'false'); gear.focus(); } });
+  document.addEventListener('click', function (e) { if (!pop.hidden && !pop.contains(e.target) && !gear.contains(e.target)) { pop.hidden = true; gear.setAttribute('aria-expanded', 'false'); } });
+  var mq = matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme() { var t = get('ui.theme', 'system'); root.classList.toggle('dark', t === 'dark' || (t === 'system' && mq.matches)); }
+  mq.addEventListener('change', applyTheme);
+  function sync(seg, key, def, fn) { var cur = get(key, def); seg.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.v === cur)); b.addEventListener('click', function () { store(key, b.dataset.v); seg.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); }); fn(b.dataset.v); }); }); }
+  sync(document.getElementById('seg-theme'), 'ui.theme', 'system', applyTheme);
+  sync(document.getElementById('seg-font'), 'ui.fontScale', 'default', function (v) { root.dataset.fontScale = v; });
+  var sheet = document.getElementById('sheet');
+  document.getElementById('o-pay').href = SUPPORT.pay;
+  document.getElementById('w-ln').textContent = SUPPORT.ln; document.getElementById('o-ln').href = 'lightning:' + SUPPORT.ln;
+  document.getElementById('w-btc').textContent = SUPPORT.btc; document.getElementById('o-btc').href = 'bitcoin:' + SUPPORT.btc;
+  document.getElementById('support-open').addEventListener('click', function () { if (sheet.showModal) sheet.showModal(); });
+  document.getElementById('support-close').addEventListener('click', function () { sheet.close(); });
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) sheet.close(); });
+  document.querySelectorAll('[data-copy]').forEach(function (b) { b.addEventListener('click', function () { var v = SUPPORT[b.dataset.copy]; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }).catch(function () { b.textContent = 'Select and copy'; }); }); });
+})();
+</script>
+</body>
+</html>
