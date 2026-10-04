@@ -51,7 +51,7 @@ a{color:inherit}
 .mono{font-family:var(--mono)}
 /* top: the mark, small and top-left, like a signature */
 header.top{position:relative}
-header.top .wrap{display:flex;justify-content:space-between;align-items:flex-start;padding-top:1.25rem}
+header.top .wrap{display:flex;justify-content:flex-end;align-items:flex-start;padding-top:1.25rem}
 .logo{display:block;width:3.5rem;height:3.5rem;color:var(--ink)}
 .icon-btn{width:2.75rem;height:2.75rem;border-radius:999px;background:transparent;border:0;color:var(--ink-2);display:grid;place-items:center;cursor:pointer}
 .icon-btn:hover{background:var(--paper-2)}
@@ -63,7 +63,7 @@ header.top .wrap{display:flex;justify-content:space-between;align-items:flex-sta
 .seg button{min-height:2.5rem;padding:0 .9rem;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 .875rem var(--sans);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 /* the text: plain, bold at the start, like a letter */
-main{padding-bottom:1rem;min-height:calc(100svh - 16.5rem)}
+main{padding-bottom:1rem;min-height:calc(100svh - 12rem)}
 .lead{font:600 clamp(1.375rem,4.2vw,1.75rem)/1.35 var(--sans);letter-spacing:-.012em;margin:4rem 0 1.5rem}
 p{margin:0 0 1.1rem}
 .quiet{color:var(--ink-2)}
@@ -77,6 +77,15 @@ p{margin:0 0 1.1rem}
 .fine{font-size:.8125rem;color:var(--ink-2)}
 h2{font:600 1.125rem/1.4 var(--sans);letter-spacing:-.006em;margin:4rem 0 1rem}
 .rule{border:0;border-top:1px solid var(--line);margin:3.5rem 0 0}
+
+/* the short page: everything centred, the mark large */
+main .wrap,footer .wrap{text-align:center}
+.hero-mark{display:block;width:clamp(9rem,30vw,13rem);height:auto;color:var(--ink);margin:.5rem auto 2rem}
+.lead{margin:0 auto 1.5rem;max-width:30rem}
+main p{margin-left:auto;margin-right:auto;max-width:32rem}
+footer .wrap{justify-content:center;flex-direction:column;gap:.75rem}
+footer a{margin:0 .5rem}
+button.link{margin:0 .5rem}
 /* the end */
 footer{padding:1.5rem 0 2rem}
 footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;font-size:.875rem;color:var(--ink-2)}
@@ -106,7 +115,20 @@ dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
   <div class="wrap">
-    <a href="/" aria-label="Rafiki, home"><svg class="logo" viewBox="0 0 240 240" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+
+    <button class="icon-btn" id="gear" aria-label="Settings" aria-expanded="false" aria-controls="pop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+  <div class="pop" id="pop" hidden>
+    <h2>Lighting</h2>
+    <div class="seg" id="seg-theme"><button data-v="system" aria-pressed="true">Auto</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button></div>
+    <h2>Text size</h2>
+    <div class="seg" id="seg-font"><button data-v="compact" aria-pressed="false">Compact</button><button data-v="default" aria-pressed="true">Default</button><button data-v="large" aria-pressed="false">Large</button><button data-v="xlarge" aria-pressed="false">Extra large</button></div>
+  </div>
+
+</header>
+
+<main id="main"><div class="wrap" id="top">
+  <svg class="hero-mark" viewBox="0 0 240 240" role="img" aria-label="Rafiki: a wise, friendly mandrill, drawn in outline"><g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
     <path d="M62 52C74 36 96 28 120 28C144 28 166 36 178 52"/>
     <path d="M62 52L50 40L66 38L58 22L80 32L82 12L100 28L112 8L122 26L136 6L144 28L162 12L164 32L184 22L176 40L190 42L178 52"/>
     <path d="M62 52C48 70 44 92 46 112C48 134 56 150 68 164L58 176L76 176L72 192L90 184L94 200"/>
@@ -120,19 +142,7 @@ dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
     <path d="M86 128L76 150M154 128L164 150"/>
     <path d="M102 184Q120 194 138 184"/>
   </g>
-  <g fill="currentColor"><circle cx="92" cy="108" r="3"/><circle cx="148" cy="108" r="3"/><circle cx="110" cy="165" r="3.5"/><circle cx="130" cy="165" r="3.5"/></g></svg></a>
-    <button class="icon-btn" id="gear" aria-label="Settings" aria-expanded="false" aria-controls="pop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
-  </div>
-  <div class="pop" id="pop" hidden>
-    <h2>Lighting</h2>
-    <div class="seg" id="seg-theme"><button data-v="system" aria-pressed="true">Auto</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button></div>
-    <h2>Text size</h2>
-    <div class="seg" id="seg-font"><button data-v="compact" aria-pressed="false">Compact</button><button data-v="default" aria-pressed="true">Default</button><button data-v="large" aria-pressed="false">Large</button><button data-v="xlarge" aria-pressed="false">Extra large</button></div>
-  </div>
-
-</header>
-
-<main id="main"><div class="wrap" id="top">
+  <g fill="currentColor"><circle cx="92" cy="108" r="3"/><circle cx="148" cy="108" r="3"/><circle cx="110" cy="165" r="3.5"/><circle cx="130" cy="165" r="3.5"/></g></svg>
   <p class="lead">Rafiki is a personal assistant that lives in Telegram. It remembers what you are working on, chases what you drop, and asks before it acts.</p>
   <p>There is no new app and no dashboard to check. You message it, or send a voice note, a photo or your location. You run your own copy, with your own bot, your own AI key and your own data, and the author never sees your messages. It is free and open source.</p>
 
