@@ -2,12 +2,9 @@
 import type { Ctx } from "./agent.ts";
 import { getSetting } from "./db.ts";
 import { handleUpdate, offsetOf, type Env } from "./handler.ts";
-import { maybeSync, meetingNudges } from "./calendar.ts";
-import { maybeAskPreference } from "./learn.ts";
-import { ensureSchema, handleSetup, webhookSecret } from "./setup.ts";
-import { nightly } from "./consolidate.ts";
+import { runJobs } from "./jobs.ts";
+import { ensureSchema, handleSetup, timingSafeEqual, webhookSecret } from "./setup.ts";
 import { handleGoogleCallback } from "./oauth.ts";
-import { maybeBrief, maybeMonday, sweepReminders } from "./schedule.ts";
 import { Telegram, type TgUpdate } from "./telegram.ts";
 
 interface WorkerEnv extends Env { DB: D1Database }
@@ -35,7 +32,7 @@ export default {
     if (req.method === "POST" && url.pathname === "/tg") {
       const secret = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
       const want = env.TELEGRAM_BOT_TOKEN && (env.TELEGRAM_WEBHOOK_SECRET || env.CLAIM_CODE) ? await webhookSecret(env) : "";
-      if (!want || secret !== want) return new Response("unauthorized", { status: 401 });
+      if (!want || !timingSafeEqual(secret, want)) return new Response("unauthorized", { status: 401 });
       let update: TgUpdate;
       try { update = (await req.json()) as TgUpdate; } catch { return new Response("bad request", { status: 400 }); }
       // Acknowledge at once; the work continues after the response so Telegram never times out.
@@ -52,14 +49,7 @@ export default {
       if (!owner) return;
       const c: Ctx = { db: env.DB, env, f: netFetch, now: Date.now(), off: offsetOf(env) };
       const tg = new Telegram(env.TELEGRAM_BOT_TOKEN, netFetch);
-      const chatId = Number(owner);
-      await sweepReminders(c, tg, chatId);
-      await maybeBrief(c, tg, chatId);
-      await maybeMonday(c, tg, chatId);
-      await maybeSync(c, tg, chatId);
-      await meetingNudges(c, tg, chatId);
-      await maybeAskPreference(c, tg, chatId);
-      await nightly(c);
+      await runJobs(c, tg, Number(owner));
     })().catch(() => undefined));
   },
 };

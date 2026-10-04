@@ -87,6 +87,9 @@ npm run dev       # local Worker
 ```
 The model is only ever called through `src/llm.ts`. Only low-consequence actions exist (`src/gates.ts`): Rafiki cannot send, spend or delete. Never commit a secret; a pre-commit hook runs gitleaks.
 
+## Roll back
+If an update misbehaves, `npx wrangler rollback` returns the Worker to the previous version in seconds, and your data stays as it is. `/pause` stops Rafiki acting while you look, and `/export` takes a copy first.
+
 ## Roadmap
 Done: decision cards and a preferences engine for reminder behaviour, the two-file memory import, the `/setup` page and one-click deploy. Next: iCal calendars and contacts import, a Starter Pack of generalised skills, a guided setup page on the website, and an optional Telegram Mini App dashboard. Not promised until shipped.
 

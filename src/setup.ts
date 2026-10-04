@@ -11,7 +11,7 @@ export interface SetupEnv { TELEGRAM_BOT_TOKEN: string; OPENROUTER_API_KEY?: str
 
 const hex = (b: ArrayBuffer): string => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const sha = async (t: string): Promise<string> => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
-function safeEq(a: string, b: string): boolean { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+export function timingSafeEqual(a: string, b: string): boolean { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 
 /** The header Telegram must send. An explicit secret (the owner's own deployment) wins; otherwise it is derived from the token and setup word. */
 export async function webhookSecret(env: SetupEnv): Promise<string> {
@@ -65,7 +65,7 @@ export async function handleSetup(req: Request, env: SetupEnv, db: Db, f: Fetch)
   const [n, ts] = String((await getSetting(db, "setup_fail").catch(() => null)) ?? "0,0").split(",").map(Number) as [number, number];
   const now = Date.now();
   if (n >= 5 && now - ts < 10 * 60000) return page("Too many tries", `<div class="card"><p>Please wait ten minutes and try again.</p></div>`, 429);
-  if (!env.CLAIM_CODE || !safeEq(word, env.CLAIM_CODE)) {
+  if (!env.CLAIM_CODE || !timingSafeEqual(word, env.CLAIM_CODE)) {
     await setSetting(db, "setup_fail", `${n >= 5 && now - ts >= 10 * 60000 ? 1 : n + 1},${now}`).catch(() => undefined);
     return page("Set up your Rafiki", form("That is not the setup word. Use the one you typed when you deployed."), 403);
   }
