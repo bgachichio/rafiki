@@ -10,5 +10,5 @@ export const COMMANDS: { command: string; description: string }[] = [
   { command: "why", description: "Why I did my last thing" }, { command: "pause", description: "Stop me acting" }, { command: "resume", description: "Start me again" }, { command: "help", description: "What I can do" },
 ];
 export const BOT_SHORT = "Your chief of staff, adviser, coach and business partner. It asks before it acts.";
-export const BOT_DESCRIPTION = "Rafiki is a personal agent. Tell it what is slipping and what you are working toward. It reminds, drafts, plans and coaches, and it asks before it acts.\n\nMade with ❤️ by Brian Gachichio (x.com/b_gachichio). Open source: github.com/bgachichio/rafiki";
+export const BOT_DESCRIPTION = "Rafiki is a personal agent. Tell it what is slipping and what you are working toward. It reminds, drafts, plans and coaches, and it asks before it acts.\n\nMade with ❤️ by Brian Gachichio (x.com/b_gachichio). Open source: github.com/bgachichio/rafiki\nrafiki.gachichio.org";
 export const ALLOWED_UPDATES = ["message", "edited_message", "callback_query", "poll_answer"];

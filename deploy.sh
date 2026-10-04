@@ -35,7 +35,7 @@ else if (mode === "webhook") {
     { command: "settings", description: "Brief time, quiet hours, budget" }, { command: "log", description: "What I did, and what it cost" }, { command: "why", description: "Why I did my last thing" }, { command: "pause", description: "Stop me acting" },
     { command: "resume", description: "Start me again" }, { command: "help", description: "What I can do" } ] });
   await api("setMyShortDescription", { short_description: "Your chief of staff, adviser, coach and business partner. It asks before it acts." });
-  await api("setMyDescription", { description: "Rafiki is a personal agent. Tell it what is slipping and what you are working toward. It reminds, drafts, plans and coaches, and it asks before it acts.\n\nMade with ❤️ by Brian Gachichio (x.com/b_gachichio). Open source: github.com/bgachichio/rafiki" });
+  await api("setMyDescription", { description: "Rafiki is a personal agent. Tell it what is slipping and what you are working toward. It reminds, drafts, plans and coaches, and it asks before it acts.\n\nMade with ❤️ by Brian Gachichio (x.com/b_gachichio). Open source: github.com/bgachichio/rafiki\nrafiki.gachichio.org" });
   console.log("ok");
 }
 else if (mode === "info") { const r = await api("getWebhookInfo"); const i = r.result || {}; console.log(`url_set=${!!i.url} pending=${i.pending_update_count ?? 0} last_error=${i.last_error_message ?? "none"}`); }

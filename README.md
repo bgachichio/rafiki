@@ -2,6 +2,8 @@
 
 # Rafiki
 
+**[rafiki.gachichio.org](https://rafiki.gachichio.org)** · [Learn more](https://gachichio.org/rafiki/) · [Set up your own](https://gachichio.org/rafiki/setup/)
+
 **A personal agent on Telegram.** It acts as your chief of staff, adviser, coach and business adviser. It remembers everything you tell it, reminds and chases until you tap Done, sends a morning brief, reads your calendar, and asks before it acts. You run your own copy, with your own bot, your own AI key and your own data. *Rafiki* is Swahili for "friend".
 
 **Status: early (MVP 1).** It works and one person uses it daily. Setup is still done from a terminal. The one-click installer and the guided five-step setup page are in progress (see the roadmap).
@@ -103,4 +105,4 @@ Inside the bot, `/about` shows the same options with copy buttons.
 [GNU AGPL-3.0](LICENSE) with an attribution term ([NOTICE](NOTICE)): copies, modified or not, keep the credit below. If you run a modified version for other people, the AGPL requires you to share your changes.
 
 ---
-Made with ❤️ by [Brian Gachichio](https://x.com/b_gachichio) · [@b_gachichio](https://x.com/b_gachichio) · [github.com/bgachichio/rafiki](https://github.com/bgachichio/rafiki)
+Made with ❤️ by [Brian Gachichio](https://x.com/b_gachichio) · [@b_gachichio](https://x.com/b_gachichio) · [github.com/bgachichio/rafiki](https://github.com/bgachichio/rafiki) · [rafiki.gachichio.org](https://rafiki.gachichio.org)

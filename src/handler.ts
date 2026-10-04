@@ -149,7 +149,7 @@ async function command(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, args
     case "/about": case "/support": await tg.send(chatId, aboutText(), [
       [{ text: "☕ Card or M-Pesa", data: "x", url: SUPPORT.card }],
       [{ text: "Copy Lightning address", data: "x", copy: SUPPORT.lightning }, { text: "Copy Bitcoin address", data: "x", copy: SUPPORT.bitcoin }],
-      [{ text: "Brian on X", data: "x", url: AUTHOR.x }, { text: "GitHub", data: "x", url: AUTHOR.github }],
+      [{ text: "Brian on X", data: "x", url: AUTHOR.x }, { text: "GitHub", data: "x", url: AUTHOR.github }, { text: "Website", data: "x", url: AUTHOR.site }],
     ]); return;
     case "/search": {
       if (!args.trim()) { await tg.send(chatId, "Search everything I remember, for example: /search school fees"); return; }

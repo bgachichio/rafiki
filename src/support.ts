@@ -1,5 +1,5 @@
 // Credits and the Support sheet. Values are copied from the author's published details; the build refuses empty ones.
-export const AUTHOR = { name: "Brian Gachichio", x: "https://x.com/b_gachichio", github: "https://github.com/bgachichio/rafiki" } as const;
+export const AUTHOR = { name: "Brian Gachichio", x: "https://x.com/b_gachichio", github: "https://github.com/bgachichio/rafiki", site: "https://rafiki.gachichio.org" } as const;
 export const SUPPORT = {
   card: "https://paystack.shop/pay/gachichio",
   lightning: "gachichio@walletofsatoshi.com",
@@ -35,7 +35,7 @@ export function aboutText(): string {
   return [
     `Rafiki is a personal agent for Telegram. It is free, open source (AGPL-3.0) and has no ads.`,
     `${SIGN_OFF}`,
-    `${AUTHOR.x}\n${AUTHOR.github}`,
+    `${AUTHOR.x}\n${AUTHOR.github}\n${AUTHOR.site}`,
     `If it saved you time, you can help keep it that way. Payments leave Rafiki only when you tap.`,
   ].join("\n\n");
 }
