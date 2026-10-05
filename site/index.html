@@ -110,6 +110,8 @@ dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
 .btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}.js .msg{opacity:1;transform:none}}
 </style>
+<!-- Tally: first-party visitor counts (hi.gachichio.org). Add ?tally=off to any URL to exclude your own browser. -->
+<script defer src="https://hi.gachichio.org/t.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -153,7 +155,8 @@ dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
 <footer>
   <div class="wrap">
     <div>Made with ❤️ by <a class="name" href="https://x.com/b_gachichio" target="_blank" rel="noopener noreferrer">Brian Gachichio</a></div>
-    <div><button class="link" id="support-open" type="button">☕ Support</button><a href="https://gachichio.org/rafiki/">Learn more</a><a href="https://github.com/bgachichio/rafiki" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://gachichio.org">gachichio.org</a></div>
+    <div><button class="link" id="support-open" type="button" data-tally="support">☕ Support</button><a href="https://gachichio.org/rafiki/">Learn more</a><a href="https://github.com/bgachichio/rafiki" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://gachichio.org">gachichio.org</a></div>
+    <div style="flex-basis:100%;font-size:.8125rem"><span data-tally-badge></span></div>
   </div>
 </footer>
 
