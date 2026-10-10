@@ -195,7 +195,8 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     await tg.typing(chatId);
     const r = await seeImage(ctx, tg, m.photo?.length ? m.photo : [docImage!], docImage?.mime_type ?? "image/jpeg");
     if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
-    await sayAndAsk(ctx, tg, chatId, `[Photo]${cap ? ` Owner's note: ${cap}` : ""}\n${r.text}`, `${DATA} The owner sent a photo. If it is a receipt, offer to log the spend; if it is a screenshot of a message, help with the reply; if there is a caption, do what it asks; if it is a chart, infographic, slide or page of text, explain it. ${EXPLAIN} Otherwise briefly say what you see and how you can help.`);
+    ctx.noSpend = !cap; // with no caption, a receipt is offered, never logged; any caption is the owner speaking
+    await sayAndAsk(ctx, tg, chatId, `[Photo]${cap ? ` Owner's note: ${cap}` : ""}\n${r.text}`, `${DATA} The owner sent a photo. If it is a receipt, do not log it yourself: say what it is in one line and add one button labelled "Log it" whose action is the spend line, merchant then amount then channel, for example "Java House 1250 card"; if it is a screenshot of a message, help with the reply; if there is a caption, do what it asks; if it is a chart, infographic, slide or page of text, explain it. ${EXPLAIN} Otherwise briefly say what you see and how you can help.`);
     await mediaTick(ctx, tg, chatId, "photo");
     return "photo";
   }

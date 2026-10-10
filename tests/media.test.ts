@@ -256,3 +256,16 @@ test("reminder with an attachment: replying to an earlier photo with 'remind me'
   assert.deepEqual({ ...a }, { kind: "photo", file_id: "p-big" });
   assert.match(String((s.fx.llm[0]!.body.messages as { content: string }[]).at(-1)!.content), /replying to an earlier photo/);
 });
+
+test("photo of a receipt: offered with a Log it button, never logged without asking; a caption that says log does log it", async () => {
+  const s = setup([{ content: "Receipt: JAVA HOUSE, TOTAL KES 1,250, paid card" }, agentJson({ reply: "Java House, KES 1,250 on card.", actions: [{ type: "spend", amount: 1250, category: "Food", channel: "card", note: "Java House" }], buttons: [["Log it", "Java House 1250 card"]] })], { p: bytes(9000) });
+  await owned(s);
+  await handleUpdate(s.deps, base({ photo: [{ file_id: "p", file_size: 9000 }] }));
+  assert.equal((s.db.raw.prepare("SELECT COUNT(*) AS n FROM spends").get() as { n: number }).n, 0, "not logged without asking");
+  const last = s.fx.tg.filter((c) => c.method === "sendMessage").pop()!;
+  assert.match(JSON.stringify(last.body.reply_markup), /say:Java House 1250 card/);
+  const t = setup([{ content: "Receipt: JAVA HOUSE, TOTAL KES 1,250, paid card" }, agentJson({ reply: "Logged.", actions: [{ type: "spend", amount: 1250, category: "Food", channel: "card", note: "Java House" }] })], { p: bytes(9000) });
+  await owned(t);
+  await handleUpdate(t.deps, base({ photo: [{ file_id: "p", file_size: 9000 }], caption: "log this" }));
+  assert.equal((t.db.raw.prepare("SELECT COUNT(*) AS n FROM spends").get() as { n: number }).n, 1);
+});
