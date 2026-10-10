@@ -48,6 +48,7 @@ export async function reminderCallback(ctx: Ctx, tg: Telegram, chatId: number, d
     if (!r) { await tg.send(chatId, "I can't find that reminder."); return true; }
     if (m[1] === "d") {
       await ctx.db.prepare("UPDATE reminders SET state = 'done' WHERE id = ?").bind(id).run();
+      await ctx.db.prepare("UPDATE focus SET state = 'done', done_ts = ? WHERE ref = ? AND state = 'open'").bind(ctx.now, `r:${id}`).run(); // finishing the reminder finishes the One
       if (r.repeat === "daily" || r.repeat === "weekly") {
         const step = r.repeat === "daily" ? 86400000 : 7 * 86400000;
         let next = r.due_ts + step;

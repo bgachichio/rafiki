@@ -156,9 +156,11 @@ test("reminders: 'once' sends and stops; 'confirm' sends once and stays on the b
 test("brief: the length follows the owner's rule", async () => {
   const s = await setup();
   for (const t of ["one", "two", "three", "four"]) await s.db.prepare("INSERT INTO tasks (ts, text) VALUES (?, ?)").bind(T0, `task ${t}`).run();
-  assert.equal((await buildBrief(s.ctx())).split("\n").filter((l) => /^\d\. /.test(l)).length, 3);
+  // The One counts as the first item: "top three" is the One plus two more.
+  const items = (b: string): number => b.split("\n").filter((l) => /^(Today's One: |- )/.test(l)).length;
+  assert.equal(items(await buildBrief(s.ctx())), 3);
   await s.db.prepare("INSERT INTO prefs (key, value, ts) VALUES ('brief.items', '1', 1)").bind().run();
-  assert.equal((await buildBrief(s.ctx())).split("\n").filter((l) => /^\d\. /.test(l)).length, 1);
+  assert.equal(items(await buildBrief(s.ctx())), 1);
 });
 
 test("learning: three ignored chases lead to one question, once a day, in the daytime, with evidence and a suggestion", async () => {

@@ -4,6 +4,7 @@ import { capUsd, dailyCost, type Ctx } from "./agent.ts";
 import { briefLine, getEvents, conflicts } from "./calendar.ts";
 import { canNudge, isPaused, logOut } from "./budget.ts";
 import { feedbackRow } from "./feedback.ts";
+import { FOCUS_BUTTONS, focusLines, todays, weekScore } from "./focus.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
 import { loadPrefs } from "./prefs.ts";
@@ -66,11 +67,14 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   for (const t of tasks.results) items.push(t.text);
   const goal = await db.prepare("SELECT text, by_date FROM goals WHERE state = 'open' ORDER BY id LIMIT 1").bind().first<{ text: string; by_date: string | null }>();
   if (items.length < 3 && goal) items.push(`Move your goal forward: ${goal.text}${goal.by_date ? ` (by ${goal.by_date})` : ""}`);
-  const top = items.slice(0, (await loadPolicy(db)).policy.briefItems);
-
   const lines = [`Morning. ${fmtDateTime(now, off).split(" ").slice(0, 2).join(" ")}`];
-  if (top.length) { lines.push("Top three today:"); top.forEach((t, i) => lines.push(`${i + 1}. ${t}`)); }
-  else lines.push("Nothing on your list yet. Tell me one thing that matters today.");
+  // The One leads; the rest of the list is there, but smaller, so the day has one clear priority.
+  const one = await focusLines(db, now, off);
+  lines.push(...one);
+  const oneText = (await todays(db, now, off))?.text ?? "";
+  const rest = items.filter((t) => !t.endsWith(oneText) || !oneText).slice(0, Math.max(0, (await loadPolicy(db)).policy.briefItems - (one.length ? 1 : 0)));
+  if (rest.length) { lines.push(one.length ? "Also on your plate:" : "Top of your list:"); rest.forEach((t) => lines.push(`- ${t}`)); }
+  if (!one.length && !rest.length) lines.push("Nothing on your list yet. Tell me one thing that matters today.");
   const evs = await getEvents(db, dayStart, dayEnd + 86400000);
   const cal = briefLine(evs, now, off);
   if (cal) lines.push(cal);
@@ -93,7 +97,8 @@ export async function maybeBrief(ctx: Ctx, tg: Telegram, chatId: number): Promis
   if (nowM < want || nowM >= want + 60) return false; // a one-hour window so a missed cron tick still delivers
   if ((await getSetting(ctx.db, "brief_sent_date")) === today) return false;
   await setSetting(ctx.db, "brief_sent_date", today);
-  await tg.send(chatId, await buildBrief(ctx), [[{ text: "Plan my day", data: "say:Plan my day" }], feedbackRow("brief")]);
+  const brief = await buildBrief(ctx); // picks today's One if there is none yet
+  await tg.send(chatId, brief, [...((await todays(ctx.db, ctx.now, ctx.off)) ? [FOCUS_BUTTONS] : []), [{ text: "Plan my day", data: "say:Plan my day" }], feedbackRow("brief")]);
   await logOut(ctx, "brief", false);
   return true;
 }
@@ -108,7 +113,8 @@ export async function maybeMonday(ctx: Ctx, tg: Telegram, chatId: number): Promi
   if (!(await canNudge(ctx))) return false;
   await setSetting(ctx.db, "monday_sent_date", today);
   const led = await ctx.db.prepare("SELECT prospect, rung, next_ask FROM ledger ORDER BY rung DESC, last_move_ts DESC LIMIT 5").bind().all<{ prospect: string; rung: number; next_ask: string | null }>();
-  const lines = ["Monday check: who moved a rung this week?"];
+  const score = await weekScore(ctx.db, ctx.now, ctx.off);
+  const lines = [...(score ? [score] : []), "Monday check: who moved a rung this week?"];
   if (led.results.length) for (const l of led.results) lines.push(`- ${l.prospect}: rung ${l.rung}${l.next_ask ? `, next ask: ${l.next_ask}` : ""}`);
   else lines.push("Your customer ledger is empty. Name one person to approach this week and what you would ask them for.");
   await tg.send(chatId, lines.join("\n"), [[{ text: "Update ledger", data: "say:Update my customer ledger" }], feedbackRow("monday")]);

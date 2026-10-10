@@ -15,6 +15,7 @@ import { limitsText } from "./limits.ts";
 import { AUTHOR, SUPPORT, aboutText } from "./support.ts";
 import { startMediaCheck } from "./mediacheck.ts";
 import { runSelfTest, selfTestText } from "./selftest.ts";
+import { setOwnFocus } from "./focus.ts";
 import { startSequence } from "./cards.ts";
 import { importsList, memoryHome, modelCommand, prefsHome, skillCommand, skillsHome, undoCommand } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
@@ -29,7 +30,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /one /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 export async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -216,6 +217,7 @@ async function lifeCommand(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, 
       return true;
     }
     case "/brief": await tg.send(chatId, await buildBrief(ctx)); return true;
+    case "/one": await setOwnFocus(ctx, tg, chatId, args); return true;
     case "/today": { await tg.typing(chatId); const r = await runAgent(ctx, "What are my top three for today, and which do I do first?"); await tg.send(chatId, r.text, r.buttons); return true; }
     case "/goals": {
       const g = await ctx.db.prepare("SELECT text, target, by_date FROM goals WHERE state = 'open' ORDER BY id").bind().all<{ text: string; target: string | null; by_date: string | null }>();

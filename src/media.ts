@@ -125,6 +125,16 @@ const TEXT_EXT = /\.(md|markdown|txt|csv|tsv|json|log|yaml|yml|xml|html?|rtf|vcf
 export const isTextFile = (f: TgFile): boolean => (f.mime_type ?? "").startsWith("text/") || f.mime_type === "application/json" || TEXT_EXT.test(f.file_name ?? "");
 export const isPdf = (f: TgFile): boolean => f.mime_type === "application/pdf" || /\.pdf$/i.test(f.file_name ?? "");
 
+/** A PDF's text, read by the media model. Used for uploaded PDFs and for PDF links. */
+export async function pdfBytesText(ctx: Ctx, bytes: Uint8Array, name: string): Promise<Out> {
+  const max = limit(ctx.env as MediaEnv, "pdf");
+  if (bytes.length > max) return { ok: false, why: `That PDF is ${Math.round(bytes.length / 1000)} KB, over the ${Math.round(max / 1000)} KB I can read on my current hosting plan.` };
+  try {
+    const text = await ask(ctx, "pdf", [{ type: "text", text: "Extract the text of this document faithfully, keeping headings and any tables as simple lines. If it is longer than about 5,000 words, give the full text of the first part and then a summary of the rest." }, { type: "file", file: { filename: name, file_data: `data:application/pdf;base64,${b64(bytes)}` } }], 4000);
+    return text ? { ok: true, text } : { ok: false, why: "I couldn't read any text in that PDF." };
+  } catch (e) { return fail(e, "PDF"); }
+}
+
 /** Text-like files are read directly (no model). PDFs go to the media model. Other formats get a clear answer. */
 export async function readFile(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> {
   if (isTextFile(f)) {
@@ -135,10 +145,7 @@ export async function readFile(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> 
   if (isPdf(f)) {
     const got = await fetchFile(ctx, tg, f, "pdf", "PDF");
     if (!got.ok) return { ok: false, why: got.why };
-    try {
-      const text = await ask(ctx, "pdf", [{ type: "text", text: "Extract the text of this document faithfully, keeping headings and any tables as simple lines. If it is longer than about 5,000 words, give the full text of the first part and then a summary of the rest." }, { type: "file", file: { filename: f.file_name ?? "document.pdf", file_data: `data:application/pdf;base64,${b64(got.bytes)}` } }], 4000);
-      return text ? { ok: true, text } : { ok: false, why: "I couldn't read any text in that PDF." };
-    } catch (e) { return fail(e, "PDF"); }
+    return pdfBytesText(ctx, got.bytes, f.file_name ?? "document.pdf");
   }
   return { ok: false, why: "I can read text files (.md, .txt, .csv, .json) and PDFs. For Word or Excel files, please save as PDF or paste the text." };
 }

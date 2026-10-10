@@ -21,6 +21,9 @@ import { isPaused } from "./schedule.ts";
 import { attachOf, Telegram, type Fetch, type TgCallback, type TgMessage, type TgUpdate } from "./telegram.ts";
 import { command, consolidateNow, moneySummary, recordSpend } from "./slash.ts";
 import { calendarCallback, reminderCallback } from "./callbacks.ts";
+import { keepRead, linkToRead, readUrl } from "./reader.ts";
+import { focusCallback, setOwnFocus } from "./focus.ts";
+import { EXPLAIN } from "./prompts.ts";
 
 export interface Env extends AgentEnv, GoogleEnv {
   MEDIA_SCALE?: string;
@@ -85,7 +88,22 @@ async function handleText(ctx: Ctx, tg: Telegram, chatId: number, text: string):
   if ((await getSetting(ctx.db, "ob_step")) === "help" && (await recordSpend(ctx, tg, chatId, t))) return;
   if (await onboardingText(ctx, tg, chatId, t)) return;
   if (await recordSpend(ctx, tg, chatId, t)) return;
+  const own = /^(?:one|my one thing|today'?s one)\s*[:=-]\s*(.+)$/i.exec(t);
+  if (own) { await setOwnFocus(ctx, tg, chatId, own[1]!); return; }
+  const link = linkToRead(t);
+  if (link) { await explainLink(ctx, tg, chatId, link, t); return; }
   await converse(ctx, tg, chatId, t);
+}
+
+/** A link on its own, or "summarise this <link>": read it, keep it in memory, explain it. */
+async function explainLink(ctx: Ctx, tg: Telegram, chatId: number, url: string, said: string): Promise<void> {
+  await tg.typing(chatId);
+  const r = await readUrl(ctx, url);
+  if (!r.ok) { await tg.send(chatId, r.why); return; }
+  await keepRead(ctx, url, r);
+  const note = said.replace(url, "").trim();
+  const cut = r.text.length > 9000 ? `\n[... the source continues for ${r.text.length - 9000} more characters, kept in memory]` : "";
+  await sayAndAsk(ctx, tg, chatId, `[Link: ${r.title} | ${r.source}]${note ? `\nOwner's note: ${note}` : ""}\n${r.text.slice(0, 9000)}${cut}`, `${EXPLAIN} The source is a link the owner sent, now also kept in memory. If the owner's note asks for something else (a reply, a decision, a critique), do that instead, still briefly.`, said);
 }
 
 async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: number): Promise<void> {
@@ -106,6 +124,7 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   if (data === "ex:start") { await exportStart(ctx, tg, chatId); return; }
   if (data === "ex:next") { await exportNext(ctx, tg, chatId); return; }
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
+  if (await focusCallback(ctx, tg, chatId, data)) return;
   if (await cardCallback(ctx, tg, chatId, data)) return;
   if (await onboardingCallback(ctx, tg, chatId, data)) return;
   if (await kmCallback(ctx, tg, chatId, data)) return;
@@ -137,9 +156,9 @@ const forwardedFrom = (m: TgMessage): string | null => {
   return null;
 };
 
-async function sayAndAsk(ctx: Ctx, tg: Telegram, chatId: number, text: string, hint: string): Promise<void> {
+async function sayAndAsk(ctx: Ctx, tg: Telegram, chatId: number, text: string, hint: string, store?: string): Promise<void> {
   await tg.typing(chatId);
-  const r = await runAgent(ctx, text, hint);
+  const r = await runAgent(ctx, text, hint, store);
   await tg.send(chatId, r.text, r.buttons);
 }
 
@@ -172,7 +191,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
     await tg.typing(chatId);
     const r = await seeImage(ctx, tg, m.photo?.length ? m.photo : [docImage!], docImage?.mime_type ?? "image/jpeg");
     if (!r.ok) { await tg.send(chatId, r.why); return "media-error"; }
-    await sayAndAsk(ctx, tg, chatId, `[Photo]${cap ? ` Owner's note: ${cap}` : ""}\n${r.text}`, `${DATA} The owner sent a photo. If it is a receipt, offer to log the spend; if it is a screenshot of a message, help with the reply; otherwise answer what the caption asks, or briefly say what you see and how you can help.`);
+    await sayAndAsk(ctx, tg, chatId, `[Photo]${cap ? ` Owner's note: ${cap}` : ""}\n${r.text}`, `${DATA} The owner sent a photo. If it is a receipt, offer to log the spend; if it is a screenshot of a message, help with the reply; if there is a caption, do what it asks; if it is a chart, infographic, slide or page of text, explain it. ${EXPLAIN} Otherwise briefly say what you see and how you can help.`);
     await mediaTick(ctx, tg, chatId, "photo");
     return "photo";
   }
@@ -207,7 +226,7 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
       await tg.send(chatId, `${name} looks like a skills file. Add it as one of my skills?`, [[{ text: "Add as a skill", data: `sk:yes:${row?.id ?? 0}` }, { text: "Keep as a note", data: "sk:no" }]]);
       return "skill-offer";
     }
-    await sayAndAsk(ctx, tg, chatId, `[File: ${d.file_name ?? "file"}]${cap ? ` Owner's note: ${cap}` : ""}\n${head}`, `${DATA} The file is also now stored in permanent memory. Do what the note asks; if there is no note, give a two-line summary and say it can be searched later.`);
+    await sayAndAsk(ctx, tg, chatId, `[File: ${d.file_name ?? "file"}]${cap ? ` Owner's note: ${cap}` : ""}\n${head}`, `${DATA} The file is also now stored in permanent memory. Do what the note asks. If there is no note, explain the file. ${EXPLAIN}`);
     await mediaTick(ctx, tg, chatId, "file");
     return "document";
   }

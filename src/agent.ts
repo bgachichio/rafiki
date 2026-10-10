@@ -144,7 +144,8 @@ const DEEP = /\b(advis\w*|should i|decision|pricing|price|strategy|cash ?flow|fo
 
 function say(text: string): string { return `say:${text}`.slice(0, 64); }
 
-export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promise<AgentReply> {
+/** store: what memory keeps as the owner's message, when the turn carries a long source (a page, a file) that memory holds elsewhere. */
+export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?: string): Promise<AgentReply> {
   const { db, env, f, now, off } = ctx;
   const red = redactSecrets(userText);
   const warn = red.found.length ? "I removed what looked like a secret from your message and did not store it. Please never send passwords, keys or card numbers.\n\n" : "";
@@ -216,7 +217,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promi
     };
   }
 
-  if (text) await addMessage(db, now, "user", text);
+  if (text) await addMessage(db, now, "user", store ?? text);
   await addMessage(db, now, "assistant", out.text);
   await logRun(db, { now, role: roleKey, model, sens, pref, tin, tout, cost, ms: Date.now() - started, status, trace: { ...traceExtra, prompt_version: PROMPT_VERSION, role: roleKey, sens, deep, model, provider_pref: pref, actions: done, recalled: hits.length, skills: skillHits.map((h) => h.name), day: fmtDate(now, off) } });
   return out;

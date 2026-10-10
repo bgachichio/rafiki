@@ -54,3 +54,6 @@ CREATE INDEX IF NOT EXISTS idx_signals_kind ON signals (kind, ts);
 
 -- Birthdays from imported contacts, for the morning brief.
 CREATE TABLE IF NOT EXISTS birthdays (name TEXT NOT NULL, md TEXT NOT NULL, year INTEGER, PRIMARY KEY (name, md));
+
+-- The One: one focus a day, picked by Rafiki, swapped or done with one tap. day is the local DD-MM-YYYY.
+CREATE TABLE IF NOT EXISTS focus (day TEXT PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, ref TEXT, state TEXT NOT NULL DEFAULT 'open', done_ts INTEGER);
