@@ -5,7 +5,7 @@ import { getSetting, setSetting } from "./db.ts";
 import { agendaText, calendarChoices, getEvents, syncIfStale } from "./calendar.ts";
 import { FEED_HELP } from "./ical.ts";
 import { consolidateDay } from "./consolidate.ts";
-import { authUrl, googleConfigured, makeState, redirectUri } from "./google.ts";
+import { googleConfigured } from "./google.ts";
 import { addFact, findFacts, fmtHit, recall } from "./memory.ts";
 import { describePlace, savePlace } from "./media.ts";
 import { startPaste, startWriting } from "./knowme.ts";
@@ -16,6 +16,8 @@ import { AUTHOR, SUPPORT, aboutText } from "./support.ts";
 import { startMediaCheck } from "./mediacheck.ts";
 import { runSelfTest, selfTestText } from "./selftest.ts";
 import { setOwnFocus } from "./focus.ts";
+import { connectHub, emailCommand, inboxCommand } from "./connections.ts";
+import { codeCommand } from "./bridge.ts";
 import { startSequence } from "./cards.ts";
 import { importsList, memoryHome, modelCommand, prefsHome, skillCommand, skillsHome, undoCommand } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
@@ -30,7 +32,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /one /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /one /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /inbox /email /code /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 export async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -183,19 +185,10 @@ async function calendarCommand(ctx: Ctx, tg: Telegram, chatId: number, cmd: stri
       await tg.send(chatId, "Calendars I read (tap to switch one on or off):\n" + ch.map((c) => `- ${c.name}: ${c.on ? "on" : "off"}${c.id.startsWith("ical:") ? " (link)" : ""}`).join("\n") + "\n\nTo add another, paste its private iCal link here.", rows);
       return true;
     }
-    case "/connect": {
-      if (!googleConfigured(ctx.env)) { await tg.send(chatId, `Google sign-in is not set up yet. It takes about 8 minutes, once:\n1. In Google Cloud Console enable the Google Calendar API.\n2. Create an OAuth client (web application) with the redirect URI ${redirectUri(ctx.env)}\n3. Run ./deploy.sh google and paste the client id and secret.\nFull steps are in the vault under Rafiki - Personal Agent, 14-calendar-setup.`); return true; }
-      const cred = await ctx.db.prepare("SELECT ts FROM credentials WHERE provider = 'google'").bind().first<{ ts: number }>();
-      if (cred) {
-        const last = Number((await getSetting(ctx.db, "cal_last_sync")) ?? 0);
-        await tg.send(chatId, `Google Calendar is connected${last ? `, last synced ${fmtDateTime(last, ctx.off)}` : ""}. I sync every 15 minutes and read only.`, [[{ text: "Sync now", data: "cal:sync" }, { text: "Disconnect", data: "cal:disc" }]]);
-        return true;
-      }
-      const { state, nonce } = await makeState(ctx.env, ctx.now);
-      await setSetting(ctx.db, "oauth_nonce", nonce);
-      await tg.send(chatId, "Tap to connect your Google Calendar. I only ask to read it, and you can disconnect any time with /disconnect.", [[{ text: "Connect Google Calendar", data: "x", url: authUrl(ctx.env, state) }]]);
-      return true;
-    }
+    case "/connect": await connectHub(ctx, tg, chatId); return true;
+    case "/inbox": await inboxCommand(ctx, tg, chatId); return true;
+    case "/email": await emailCommand(ctx, tg, chatId, args); return true;
+    case "/code": await codeCommand(ctx, tg, chatId, args); return true;
     case "/disconnect": { await disconnect(ctx, tg, chatId); return true; }
     default: return false;
   }

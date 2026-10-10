@@ -32,12 +32,12 @@ export async function checkState(e: GoogleEnv, state: string, now: number): Prom
   if (!(Number(exp) > now)) return null;
   return nonce;
 }
-export function authUrl(e: GoogleEnv, state: string): string {
+export function authUrl(e: GoogleEnv, state: string, extra: string[] = []): string {
   const q = new URLSearchParams({
     client_id: e.GOOGLE_CLIENT_ID ?? "",
     redirect_uri: redirectUri(e),
     response_type: "code",
-    scope: SCOPE_CALENDAR,
+    scope: [SCOPE_CALENDAR, ...extra].join(" "),
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",

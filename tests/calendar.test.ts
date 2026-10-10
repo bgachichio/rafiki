@@ -206,7 +206,7 @@ test("commands: /connect without setup explains; with setup gives a URL button; 
   const none = setup();
   await owned(none);
   await handleUpdate({ ...none.deps, env: { ...ENV } }, msg("/connect"));
-  assert.ok(sent(none.tgCalls).some((t) => /not set up yet/.test(t) && /oauth\/google\/callback/.test(t)));
+  assert.ok(sent(none.tgCalls).some((t) => /Google Calendar and Gmail: not set up/.test(t) && /oauth\/google\/callback/.test(t) && /publish the app to Production/.test(t)));
 
   const s = setup([], { events: { primary: [ev("a", "Standup", iso(9), iso(9, 30))] } });
   await owned(s);
@@ -224,7 +224,7 @@ test("commands: /connect without setup explains; with setup gives a URL button; 
   await handleUpdate(s.deps, msg("/agenda"));
   assert.ok(sent(s.tgCalls).some((t) => /09:00-09:30 Standup/.test(t)));
   await handleUpdate(s.deps, msg("/connect"));
-  assert.ok(sent(s.tgCalls).some((t) => /Google Calendar is connected, last synced/.test(t)));
+  assert.ok(sent(s.tgCalls).some((t) => /Google Calendar: connected, last synced/.test(t) && /Gmail: not connected/.test(t)));
   await handleUpdate(s.deps, msg("/disconnect"));
   assert.ok(sent(s.tgCalls).some((t) => /Disconnected, and Google has been told to revoke/.test(t)));
   assert.equal(s.wd.w.calls.filter((c) => c.method === "revoke")[0]!.body.token, "rt-secret-xyz");

@@ -18,7 +18,7 @@ import { fmtDate, fmtDateTime, fmtTime, parseHM, startOfLocalDay } from "./time.
 import { parseWhen } from "./when.ts";
 
 export interface AgentEnv extends LlmEnv { DEFAULT_CAP_USD: string; CONFIDENTIAL_TERMS?: string }
-export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null }
+export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null; untrusted?: boolean }
 export interface AgentReply { text: string; buttons?: Button[][]; role: string }
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -201,7 +201,8 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
     const p = parseAgentJson(r.text);
     roleKey = p.role;
     const io = ctx.tg && ctx.chatId ? { calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); }, attach: ctx.attach ?? undefined } : { attach: ctx.attach ?? undefined };
-    const acts = validateActions(p.actions, now, off);
+    // Text from outside (mail, automations) may propose a reminder or a task, never a fact, goal, setting or spend.
+    const acts = validateActions(p.actions, now, off).filter((a) => !ctx.untrusted || a.type === "reminder" || a.type === "task_add" || a.type === "calendar_link");
     // The owner's own words decide a clear relative time ("in 2 minutes", "tomorrow at 9am"); the model's arithmetic does not.
     const pol = (await loadPolicy(db)).policy;
     const when = parseWhen(text, now, off, parseHM(pol.morning) ?? 540);

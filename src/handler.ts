@@ -23,6 +23,8 @@ import { command, consolidateNow, moneySummary, recordSpend } from "./slash.ts";
 import { calendarCallback, reminderCallback } from "./callbacks.ts";
 import { keepRead, linkToRead, readUrl } from "./reader.ts";
 import { focusCallback, setOwnFocus } from "./focus.ts";
+import { codeCallback } from "./bridge.ts";
+import { connectCallback } from "./connections.ts";
 import { EXPLAIN } from "./prompts.ts";
 
 export interface Env extends AgentEnv, GoogleEnv {
@@ -125,6 +127,8 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   if (data === "ex:next") { await exportNext(ctx, tg, chatId); return; }
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
   if (await focusCallback(ctx, tg, chatId, data)) return;
+  if (await codeCallback(ctx, tg, chatId, data)) return;
+  if (await connectCallback(ctx, tg, chatId, data)) return;
   if (await cardCallback(ctx, tg, chatId, data)) return;
   if (await onboardingCallback(ctx, tg, chatId, data)) return;
   if (await kmCallback(ctx, tg, chatId, data)) return;

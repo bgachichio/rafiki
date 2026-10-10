@@ -10,6 +10,7 @@ import { loadPolicy, recordSignal } from "./policy.ts";
 import { loadPrefs } from "./prefs.ts";
 import { birthdayLine } from "./vcard.ts";
 import { creditLeft } from "./llm.ts";
+import { inboxLine } from "./gmail.ts";
 import { kes } from "./spend.ts";
 import type { Attach, Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, inQuietHours, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
@@ -85,11 +86,13 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   if (clash) lines.push(`Heads up: ${clash[0].title} overlaps ${clash[1].title} at ${fmtTime(clash[1].start, off)}.`);
   const y = await db.prepare("SELECT COALESCE(SUM(amount_cents),0) AS a, COALESCE(SUM(fee_cents),0) AS f FROM spends WHERE ts >= ? AND ts < ?").bind(dayStart - 86400000, dayStart).first<{ a: number; f: number }>();
   if (y && Number(y.a) > 0) lines.push(`Spent yesterday: ${kes(Number(y.a))} (fees ${kes(Number(y.f))})`);
+  const inbox = await inboxLine(ctx);
+  if (inbox) lines.push(inbox);
   const left = await creditLeft(ctx.env, ctx.f);
   if (left !== null && left < 2) lines.push(`Model credit is low: USD ${left.toFixed(2)} left. Top up at openrouter.ai/settings/credits so I can keep thinking.`);
   const spentModel = await dailyCost(db, dayStart - 1, off);
   lines.push(`Rafiki cost yesterday: USD ${spentModel.toFixed(2)} of USD ${(await capUsd(ctx)).toFixed(2)} a day`);
-  return lines.slice(0, 8).join("\n");
+  return lines.slice(0, 10).join("\n");
 }
 
 export async function maybeBrief(ctx: Ctx, tg: Telegram, chatId: number): Promise<boolean> {

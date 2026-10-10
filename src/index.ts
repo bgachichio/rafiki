@@ -1,11 +1,12 @@
 // Worker entry: Telegram webhook, health check, and the 5-minute cron for reminders, the brief and the Monday check.
-import type { Ctx } from "./agent.ts";
+import { withModelOverrides, type Ctx } from "./agent.ts";
 import { getSetting } from "./db.ts";
 import { handleUpdate, offsetOf, type Env } from "./handler.ts";
 import { runJobs } from "./jobs.ts";
 import { ensureSchema, handleSetup, timingSafeEqual, webhookSecret } from "./setup.ts";
 import { handleGoogleCallback } from "./oauth.ts";
 import { Telegram, type TgUpdate } from "./telegram.ts";
+import { handleEmail, handleInboundHttp, inboundKey, type EmailMsg } from "./bridge.ts";
 
 interface WorkerEnv extends Env { DB: D1Database }
 
@@ -40,7 +41,23 @@ export default {
       try { await handleUpdate({ db: env.DB, env, f: netFetch, now: Date.now() }, update); } catch (e) { console.error("update failed:", e instanceof Error ? e.message : String(e)); }
       return new Response("ok");
     }
+    const inbound = /^\/in\/([0-9a-f]{32})$/.exec(url.pathname);
+    if (req.method === "POST" && inbound) {
+      const owner = await getSetting(env.DB, "owner_chat_id").catch(() => null);
+      const want = await inboundKey(env, (await getSetting(env.DB, "inbound_salt").catch(() => null)) ?? "");
+      if (!owner || !timingSafeEqual(inbound[1]!, want)) return new Response("not found", { status: 404 });
+      const c: Ctx = { db: env.DB, env: await withModelOverrides(env.DB, env), f: netFetch, now: Date.now(), off: offsetOf(env) };
+      return handleInboundHttp(req, c, new Telegram(env.TELEGRAM_BOT_TOKEN, netFetch), Number(owner));
+    }
     return new Response("not found", { status: 404 });
+  },
+
+  /** Mail routed to this Worker by Cloudflare Email Routing. Only senders the owner allowed are read. */
+  async email(message: EmailMsg, env: WorkerEnv): Promise<void> {
+    const owner = await getSetting(env.DB, "owner_chat_id").catch(() => null);
+    if (!owner) return;
+    const c: Ctx = { db: env.DB, env: await withModelOverrides(env.DB, env), f: netFetch, now: Date.now(), off: offsetOf(env) };
+    await handleEmail(message, c, new Telegram(env.TELEGRAM_BOT_TOKEN, netFetch), Number(owner)).catch((e: unknown) => console.error("email failed:", e instanceof Error ? e.message : String(e)));
   },
 
   async scheduled(_ev: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
