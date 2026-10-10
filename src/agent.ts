@@ -16,6 +16,7 @@ import { describePlace, LOCATION_WORDS } from "./media.ts";
 import type { Attach, Button, Fetch, Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, parseHM, startOfLocalDay } from "./time.ts";
 import { parseWhen } from "./when.ts";
+import { NOTES_WORDS, notesContext, searchNotes } from "./notes.ts";
 
 export interface AgentEnv extends LlmEnv { DEFAULT_CAP_USD: string; CONFIDENTIAL_TERMS?: string }
 export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null; untrusted?: boolean }
@@ -174,10 +175,12 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
   const history = withContext ? await recentMessages(db, 8) : [];
   const hits = withContext ? await recall(db, text, 6, new Set(history.map((h) => h.id))) : [];
   const wantsLocation = LOCATION_WORDS.test(text);
+  // Asked about their own notes: search the vault (read-only). A failed search never blocks the answer.
+  const noteHits = withContext && NOTES_WORDS.test(text) ? await searchNotes(ctx, text).catch(() => null) : null;
   const context = withContext ? await buildContext(db, now, off, sens === "S2" || wantsLocation, hits, wantsLocation, skillHits) : `NOW: ${fmtDateTime(now, off)} (East Africa Time).`;
   const messages: Msg[] = [
     { role: "system", content: systemPromptFor((await getSetting(db, "bot_name")) ?? "Rafiki") },
-    { role: "system", content: context },
+    { role: "system", content: noteHits?.length ? `${context}\n${notesContext(noteHits)}` : context },
     ...history.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user", content: m.text })),
     { role: "user", content: hint ? `${text}\n\n[context hint, not from the owner: ${hint}]` : text },
   ];

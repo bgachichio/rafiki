@@ -115,3 +115,28 @@ test("gmail: read-only, opt-in; the brief line names the latest unread in Primar
   assert.equal(await inboxLine(ctx), "Inbox: 2 unread in Primary. Latest: Jane Wanjiru (Invoice 114); otieno@x.com (Lunch). /inbox to triage.");
   assert.match(seen.find((u) => u.includes("/messages?"))!, /is%3Aunread\+category%3Aprimary/);
 });
+
+test("obsidian: read-only search through the vault's GitHub backup; excluded folders and confidential terms never come back; asking about 'my notes' adds them to the turn", async () => {
+  const { searchNotes } = await import("../src/notes.ts");
+  const { runAgent } = await import("../src/agent.ts");
+  const items = [
+    { path: "Efforts/Ideas/Pricing.md", text_matches: [{ fragment: "Decided: price the pilot at KES 30,000 a month" }] },
+    { path: "Efforts/Work/Board.md", text_matches: [{ fragment: "pricing for the board" }] },
+    { path: "Atlas/Acme deal.md", text_matches: [{ fragment: "Acme pricing secrets" }] },
+  ];
+  const seen: string[] = [];
+  const base = fakeFetch([agentJson({ reply: "You decided KES 30,000 a month for the pilot.", actions: [] })]);
+  const f = (async (u: string | URL | Request, init?: RequestInit) => {
+    if (String(u).startsWith("https://api.github.com/search/code")) { seen.push(String(u)); return Response.json({ items }); }
+    return base.f(u, init);
+  }) as typeof fetch;
+  const env = { ...ENV, NOTES_REPO: "me/vault", NOTES_TOKEN: "t", NOTES_EXCLUDE: "Efforts/Work", CONFIDENTIAL_TERMS: "Acme" } as never;
+  const ctx: Ctx = { db: makeDb(), env, f, now: T0, off: 180 };
+  const hits = await searchNotes(ctx, "what did I decide about pilot pricing?");
+  assert.deepEqual(hits!.map((h) => h.path), ["Efforts/Ideas/Pricing.md"]);
+  assert.match(decodeURIComponent(seen[0]!), /q=decide\+pilot\+pricing\+repo:me\/vault\+extension:md|q=pilot\+pricing\+repo:me\/vault\+extension:md/);
+  await runAgent(ctx, "what did I decide about pilot pricing in my notes?");
+  const sys = (base.llm[0]!.body.messages as { content: string }[])[1]!.content;
+  assert.match(sys, /FROM THE OWNER'S OBSIDIAN NOTES .*KES 30,000/);
+  assert.equal(await searchNotes({ ...ctx, env: ENV as never }, "x"), null, "not configured: nothing is called");
+});

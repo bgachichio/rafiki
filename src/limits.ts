@@ -23,7 +23,7 @@ export const LIMITS: readonly LimitGroup[] = [
   {
     title: "It cannot see what you have not given it",
     items: [
-      "Read your WhatsApp, SMS or notes, or any email you have not connected. Gmail, if you add it, is read-only: it sees unread mail in Primary and never sends, deletes or labels. Forwarded mail is read only from senders you allow.",
+      "Read your WhatsApp or SMS, notes you have not connected, or any email you have not connected. Obsidian, if you connect it, is searched read-only and never written to. Gmail, if you add it, is read-only: it sees unread mail in Primary and never sends, deletes or labels. Forwarded mail is read only from senders you allow.",
       "Turn text from outside into memory or settings. Mail, automations and links can only lead to a reminder or task suggestion; they never write facts, goals, money or settings.",
       "Read a calendar you switched off with /calendars, or a calendar link you removed.",
       "Keep passwords, card numbers or API keys. They are stripped before anything is stored or sent to an AI model.",

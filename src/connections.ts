@@ -5,6 +5,7 @@ import { getSetting, setSetting } from "./db.ts";
 import { gmailConnected, SCOPE_GMAIL, unreadPrimary } from "./gmail.ts";
 import { authUrl, googleConfigured, makeState, redirectUri } from "./google.ts";
 import { randomHex } from "./crypto.ts";
+import { notesConfigured, type NotesEnv } from "./notes.ts";
 import type { Button, Telegram } from "./telegram.ts";
 import { fmtDateTime } from "./time.ts";
 
@@ -41,6 +42,7 @@ export async function connectHub(ctx: Ctx, tg: Telegram, chatId: number): Promis
   rows.push([{ text: "Copy automation address", data: "x", copy: url }, { text: "New address", data: "in:rotate" }]);
   const allow = (await getSetting(ctx.db, "email_allow")) ?? "";
   lines.push(`\nEmail in: forward mail to the address you route to this Worker in Cloudflare Email Routing. I only read mail from senders you allow (${allow ? allow : "none yet"}): /email allow you@gmail.com`);
+  lines.push(notesConfigured(ctx.env as unknown as NotesEnv) ? "\nObsidian: connected, read-only. /notes <words> searches; I look there when you ask about your notes." : "\nObsidian: not connected. /notes shows the 5-minute read-only set-up (your vault backed up to a private GitHub repository).");
   const env = ctx.env as unknown as BridgeEnv;
   lines.push(env.CLAUDE_ROUTINE_ID && env.CLAUDE_ROUTINE_TOKEN ? "\nClaude Code: connected. /code <task> starts a cloud session after you confirm." : "\nClaude Code: not set up. /code shows the 5-minute set-up.");
   await tg.send(chatId, lines.join("\n"), rows);
