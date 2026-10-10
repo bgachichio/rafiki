@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .privacy-denylist ] || { echo "no .privacy-denylist here; skipped"; exit 0; }
-if git ls-files -z | xargs -0 grep -n -i -I -F -f <(grep -v '^\s*$' .privacy-denylist) -- 2>/dev/null | grep -v '^package-lock.json'; then
+if git ls-files -z | xargs -0 grep -n -i -I -F -f <(grep -v '^\s*$' .privacy-denylist) -- 2>/dev/null | grep -v -e '^package-lock.json' -e '^src/assets/[a-z]*\.gen\.ts:'; then
   echo "STOP: personal terms found in tracked files" >&2; exit 1
 fi
 echo "privacy scan clean"

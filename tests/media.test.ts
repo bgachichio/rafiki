@@ -67,10 +67,29 @@ test("voice: too large for the plan, failed download and model failure each give
   const t = setup([{ status: 500 }, { status: 500 }], { v: bytes(1000) });
   await owned(t);
   await handleUpdate(t.deps, base({ voice: { file_id: "v", file_size: 1000 } }));
-  assert.match(sent(t.fx.tg).pop()!, /couldn't make out that voice note/);
+  assert.match(sent(t.fx.tg).pop()!, /couldn't process that voice note just now \(error 500\)/);
 });
 
-test("voice: if the media model fails, Workers AI Whisper is the fallback", async () => {
+test("voice: Cloudflare Whisper is tried first, so a working Whisper needs no paid model call", async () => {
+  const ai = { run: async () => ({ text: "remind me to call john" }) };
+  const s = setup([agentJson({ reply: "ok", actions: [] })], { v: bytes(2000) }, { ...ENV, AI: ai } as Env);
+  await owned(s);
+  await handleUpdate(s.deps, base({ voice: { file_id: "v", file_size: 2000 } }));
+  assert.ok(sent(s.fx.tg).some((t) => t === "I heard: remind me to call john"));
+  assert.equal(s.fx.llm.length, 1, "only the agent turn reached OpenRouter");
+  assert.ok(s.db.raw.prepare("SELECT 1 FROM runs WHERE agent_role = 'media' AND status = 'ok'").get(), "the media attempt is logged");
+});
+
+test("voice: if Whisper fails twice, the OpenRouter media model is the fallback", async () => {
+  const ai = { run: async () => { throw new Error("AI down"); } };
+  const s = setup([{ content: "from gemini" }, agentJson({ reply: "ok", actions: [] })], { v: bytes(2000) }, { ...ENV, AI: ai } as Env);
+  await owned(s);
+  await handleUpdate(s.deps, base({ voice: { file_id: "v", file_size: 2000 } }));
+  assert.ok(sent(s.fx.tg).some((t) => t === "I heard: from gemini"));
+  assert.equal((s.db.raw.prepare("SELECT count(*) n FROM runs WHERE agent_role = 'media' AND status = 'error'").get() as { n: number }).n, 2);
+});
+
+test("voice: older behaviour kept, Whisper still answers when the media model is down", async () => {
   const ai = { run: async (_m: string, input: unknown) => { assert.ok(typeof (input as { audio: string }).audio === "string"); return { text: "from whisper" }; } };
   const s = setup([{ status: 400 }, { status: 400 }, agentJson({ reply: "ok", actions: [] })], { v: bytes(2000) }, { ...ENV, AI: ai } as Env);
   await owned(s);

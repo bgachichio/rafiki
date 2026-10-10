@@ -1,6 +1,6 @@
 // Everything that is not plain text: voice notes, photos, files, video, locations, contacts. Each is turned into text first,
 // then handled by the normal agent turn, so memory, search, privacy routing and actions work exactly as for typed text.
-import type { Ctx } from "./agent.ts";
+import { logRun, type Ctx } from "./agent.ts";
 import { addFact } from "./memory.ts";
 import { chat, CreditError, LlmError, type Part } from "./llm.ts";
 import type { Telegram, TgFile, TgMessage } from "./telegram.ts";
@@ -37,33 +37,69 @@ async function fetchFile(ctx: Ctx, tg: Telegram, f: TgFile, kind: MediaKind, lab
   return { ok: true, bytes };
 }
 
-async function ask(ctx: Ctx, parts: Part[], maxTokens = 900): Promise<string> {
-  const r = await chat(ctx.env, ctx.f, { sens: "S2", deep: false, maxTokens, model: mediaModel(ctx.env as MediaEnv), messages: [{ role: "user", content: parts }] });
-  return r.text.trim();
+/** One media model call. Every attempt, good or bad, is written to the run log so /log and /selftest show what happened. */
+async function ask(ctx: Ctx, kind: string, parts: Part[], maxTokens = 900): Promise<string> {
+  const model = mediaModel(ctx.env as MediaEnv);
+  const t0 = Date.now();
+  try {
+    const r = await chat(ctx.env, ctx.f, { sens: "S2", deep: false, maxTokens, model, messages: [{ role: "user", content: parts }] });
+    await logMedia(ctx, kind, r.model, "ok", Date.now() - t0, r.costUsd, r.tokensIn, r.tokensOut, r.providerPref);
+    return r.text.trim();
+  } catch (e) {
+    await logMedia(ctx, kind, model, e instanceof CreditError ? "credit" : "error", Date.now() - t0, 0, 0, 0, "", e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+}
+
+export async function logMedia(ctx: Ctx, kind: string, model: string, status: string, ms: number, cost = 0, tin = 0, tout = 0, pref = "", error?: string): Promise<void> {
+  await logRun(ctx.db, { now: ctx.now, role: "media", model, sens: "S2", pref, tin, tout, cost, ms, status, trace: { kind, ...(error ? { error: error.slice(0, 200) } : {}) } }).catch(() => undefined);
 }
 
 export type Out = { ok: true; text: string } | { ok: false; why: string };
-const fail = (e: unknown, what: string): Out => ({ ok: false, why: e instanceof CreditError ? "I'm out of model credit, so I can't process that right now." : e instanceof LlmError ? `I couldn't process that ${what} just now. Please try again, or type it.` : `Something went wrong reading that ${what}.` });
+const why = (e: unknown): string => { const m = e instanceof Error ? /\((\d+)\)/.exec(e.message) : null; return m ? `error ${m[1]}` : "no answer"; };
+const fail = (e: unknown, what: string): Out => ({ ok: false, why: e instanceof CreditError ? "I'm out of model credit, so I can't process that right now." : e instanceof LlmError ? `I couldn't process that ${what} just now (${why(e)}). Please try again, or type it.` : `Something went wrong reading that ${what}.` });
 
-/** Voice notes and audio files: transcribe verbatim. Tries the media model first, then Workers AI Whisper if configured. */
+const WHISPER = "@cf/openai/whisper-large-v3-turbo";
+
+/** Speech to text. Cloudflare's own Whisper runs first: free, fast, and the audio never leaves Cloudflare.
+ *  The OpenRouter media model is the fallback. Both attempts are logged. */
+export async function transcribeBytes(ctx: Ctx, bytes: Uint8Array, format: string): Promise<Out> {
+  const data = b64(bytes);
+  const ai = (ctx.env as MediaEnv).AI;
+  for (let attempt = 0; ai && attempt < 2; attempt++) {
+    const t0 = Date.now();
+    try {
+      const r = await ai.run(WHISPER, { audio: data });
+      const text = r.text?.trim() ?? "";
+      await logMedia(ctx, "voice", WHISPER, text ? "ok" : "empty", Date.now() - t0);
+      if (text) return { ok: true, text };
+      break; // silence or no speech: a second try will not help
+    } catch (e) {
+      await logMedia(ctx, "voice", WHISPER, "error", Date.now() - t0, 0, 0, 0, "", e instanceof Error ? e.message : String(e));
+    }
+  }
+  try {
+    const text = await ask(ctx, "voice", [{ type: "text", text: "Transcribe this audio verbatim in its original language. Output only the transcript, with no commentary." }, { type: "input_audio", input_audio: { data, format } }], 1200);
+    if (text) return { ok: true, text };
+  } catch (e) {
+    return fail(e, "voice note");
+  }
+  return { ok: false, why: "I couldn't make out that voice note. Please try again, or type it." };
+}
+
 export async function transcribe(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> {
   const got = await fetchFile(ctx, tg, f, "voice", "voice note");
   if (!got.ok) return { ok: false, why: got.why };
-  const format = AUDIO_FORMAT[f.mime_type ?? "audio/ogg"] ?? "ogg";
+  return transcribeBytes(ctx, got.bytes, AUDIO_FORMAT[f.mime_type ?? "audio/ogg"] ?? "ogg");
+}
+
+const IMAGE_PROMPT = "Describe this image precisely and extract every piece of readable text and every number (for a receipt: merchant, date, items, total, payment method). If it is a chart or infographic, give its title, what it measures, the main figures and the trend. Be factual. If it is a screenshot of a conversation, transcribe the messages.";
+
+export async function seeBytes(ctx: Ctx, bytes: Uint8Array, mime = "image/jpeg"): Promise<Out> {
   try {
-    const text = await ask(ctx, [{ type: "text", text: "Transcribe this audio verbatim in its original language. Output only the transcript, with no commentary." }, { type: "input_audio", input_audio: { data: b64(got.bytes), format } }], 1200);
-    if (text) return { ok: true, text };
-  } catch (e) {
-    if (e instanceof CreditError) return fail(e, "voice note");
-  }
-  const ai = (ctx.env as MediaEnv).AI;
-  if (ai) {
-    try {
-      const r = await ai.run("@cf/openai/whisper-large-v3-turbo", { audio: b64(got.bytes) });
-      if (r.text?.trim()) return { ok: true, text: r.text.trim() };
-    } catch { /* fall through */ }
-  }
-  return { ok: false, why: "I couldn't make out that voice note. Please try again, or type it." };
+    const text = await ask(ctx, "photo", [{ type: "text", text: IMAGE_PROMPT }, { type: "image_url", image_url: { url: `data:${mime};base64,${b64(bytes)}` } }]);
+    return text ? { ok: true, text } : { ok: false, why: "I couldn't read anything in that image." };
+  } catch (e) { return fail(e, "image"); }
 }
 
 export async function seeImage(ctx: Ctx, tg: Telegram, photo: TgFile[]): Promise<Out> {
@@ -73,17 +109,14 @@ export async function seeImage(ctx: Ctx, tg: Telegram, photo: TgFile[]): Promise
   if (!pick) return { ok: false, why: "I couldn't read that photo." };
   const got = await fetchFile(ctx, tg, pick, "photo", "photo");
   if (!got.ok) return { ok: false, why: got.why };
-  try {
-    const text = await ask(ctx, [{ type: "text", text: "Describe this image precisely and extract every piece of readable text and every number (for a receipt: merchant, date, items, total, payment method). Be factual. If it is a screenshot of a conversation, transcribe the messages." }, { type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64(got.bytes)}` } }]);
-    return text ? { ok: true, text } : { ok: false, why: "I couldn't read anything in that image." };
-  } catch (e) { return fail(e, "image"); }
+  return seeBytes(ctx, got.bytes);
 }
 
 export async function seeVideo(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> {
   const got = await fetchFile(ctx, tg, f, "video", "video");
   if (!got.ok) return { ok: false, why: got.why };
   try {
-    const text = await ask(ctx, [{ type: "text", text: "Describe what happens in this video and transcribe any speech verbatim. Be factual and brief." }, { type: "video_url", video_url: { url: `data:video/mp4;base64,${b64(got.bytes)}` } }], 1200);
+    const text = await ask(ctx, "video", [{ type: "text", text: "Describe what happens in this video and transcribe any speech verbatim. Be factual and brief." }, { type: "video_url", video_url: { url: `data:video/mp4;base64,${b64(got.bytes)}` } }], 1200);
     return text ? { ok: true, text } : { ok: false, why: "I couldn't make anything out in that video." };
   } catch (e) { return fail(e, "video"); }
 }
@@ -103,7 +136,7 @@ export async function readFile(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> 
     const got = await fetchFile(ctx, tg, f, "pdf", "PDF");
     if (!got.ok) return { ok: false, why: got.why };
     try {
-      const text = await ask(ctx, [{ type: "text", text: "Extract the text of this document faithfully, keeping headings and any tables as simple lines. If it is longer than about 5,000 words, give the full text of the first part and then a summary of the rest." }, { type: "file", file: { filename: f.file_name ?? "document.pdf", file_data: `data:application/pdf;base64,${b64(got.bytes)}` } }], 4000);
+      const text = await ask(ctx, "pdf", [{ type: "text", text: "Extract the text of this document faithfully, keeping headings and any tables as simple lines. If it is longer than about 5,000 words, give the full text of the first part and then a summary of the rest." }, { type: "file", file: { filename: f.file_name ?? "document.pdf", file_data: `data:application/pdf;base64,${b64(got.bytes)}` } }], 4000);
       return text ? { ok: true, text } : { ok: false, why: "I couldn't read any text in that PDF." };
     } catch (e) { return fail(e, "PDF"); }
   }

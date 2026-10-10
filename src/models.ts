@@ -3,9 +3,9 @@ export type ModelKind = "fast" | "smart" | "media";
 export const PRESETS: Record<ModelKind, [string, string][]> = {
   fast: [["Claude Haiku 4.5 (default)", "anthropic/claude-haiku-4.5"], ["Gemini 3.8 Flash", "google/gemini-3.8-flash"], ["Gemini 3.5 Flash-Lite (cheapest)", "google/gemini-3.5-flash-lite"], ["GPT-5 mini", "openai/gpt-5-mini"]],
   smart: [["Claude Sonnet 5.5 (default)", "anthropic/claude-sonnet-5.5"], ["Claude Opus 5.5", "anthropic/claude-opus-5.5"], ["Gemini 3.8 Flash", "google/gemini-3.8-flash"]],
-  media: [["Gemini 3.8 Flash (default)", "google/gemini-3.8-flash"], ["Gemini 3.5 Flash-Lite (cheapest)", "google/gemini-3.5-flash-lite"]],
+  media: [["Gemini 3.5 Flash-Lite (default, cheapest)", "google/gemini-3.5-flash-lite"], ["Gemini 3.8 Flash (sharper on photos)", "google/gemini-3.8-flash"]],
 };
-export const DEFAULT_MODELS: Record<ModelKind, string> = { fast: "anthropic/claude-haiku-4.5", smart: "anthropic/claude-sonnet-5.5", media: "google/gemini-3.8-flash" };
+export const DEFAULT_MODELS: Record<ModelKind, string> = { fast: "anthropic/claude-haiku-4.5", smart: "anthropic/claude-sonnet-5.5", media: "google/gemini-3.5-flash-lite" };
 export const modelLabel = (kind: ModelKind, id: string): string => PRESETS[kind].find(([, v]) => v === id)?.[0].replace(/ \((default|cheapest)\)$/, "") ?? id;
 
 export interface ModelProposal { fast: string; smart: string; media: string; reasons: string[] }

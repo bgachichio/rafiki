@@ -14,6 +14,7 @@ import { feedbackSummary, thirtyDaysAgo } from "./feedback.ts";
 import { limitsText } from "./limits.ts";
 import { AUTHOR, SUPPORT, aboutText } from "./support.ts";
 import { startMediaCheck } from "./mediacheck.ts";
+import { runSelfTest, selfTestText } from "./selftest.ts";
 import { startSequence } from "./cards.ts";
 import { importsList, memoryHome, modelCommand, prefsHome, skillCommand, skillsHome, undoCommand } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
@@ -28,7 +29,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 export async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -69,6 +70,7 @@ async function systemCommand(ctx: Ctx, tg: Telegram, chatId: number, cmd: string
   switch (cmd) {
     case "/menu": await tg.send(chatId, "Menu is below. Or just tell me what you need.", undefined, true); return true;
     case "/help": await tg.send(chatId, HELP, undefined, true); return true;
+    case "/selftest": await tg.typing(chatId); await tg.send(chatId, selfTestText(await runSelfTest(ctx))); return true;
     case "/pause": await setSetting(ctx.db, "paused", "1"); await tg.send(chatId, "Paused. I won't act or send anything until you /resume."); return true;
     case "/resume": await setSetting(ctx.db, "paused", "0"); await tg.send(chatId, "Back on. I'm listening."); return true;
     case "/settings": await tg.send(chatId, await settingsText(ctx), [[{ text: "Brief 06:30", data: "set:brief:06:30" }, { text: "Brief 08:00", data: "set:brief:08:00" }], [{ text: "Pause", data: "cmd:pause" }]]); return true;

@@ -35,8 +35,9 @@ export default {
       if (!want || !timingSafeEqual(secret, want)) return new Response("unauthorized", { status: 401 });
       let update: TgUpdate;
       try { update = (await req.json()) as TgUpdate; } catch { return new Response("bad request", { status: 400 }); }
-      // Acknowledge at once; the work continues after the response so Telegram never times out.
-      ctx.waitUntil(handleUpdate({ db: env.DB, env, f: netFetch, now: Date.now() }, update).then(() => undefined, (e: unknown) => console.error("update failed:", e instanceof Error ? e.message : String(e))));
+      // Do the work before answering. Work left to waitUntil is cut off 30 seconds after the response, which silently killed
+      // voice notes and files (download, transcribe, think, reply). Telegram waits; a retried update is dropped by markSeen.
+      try { await handleUpdate({ db: env.DB, env, f: netFetch, now: Date.now() }, update); } catch (e) { console.error("update failed:", e instanceof Error ? e.message : String(e)); }
       return new Response("ok");
     }
     return new Response("not found", { status: 404 });
