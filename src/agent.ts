@@ -13,12 +13,12 @@ import { chat, CreditError, LlmError, type LlmEnv, type Msg } from "./llm.ts";
 import { PROMPT_VERSION, systemPromptFor } from "./prompts.ts";
 import { kes } from "./spend.ts";
 import { describePlace, LOCATION_WORDS } from "./media.ts";
-import type { Button, Fetch, Telegram } from "./telegram.ts";
-import { fmtDate, fmtDateTime, fmtTime, startOfLocalDay } from "./time.ts";
+import type { Attach, Button, Fetch, Telegram } from "./telegram.ts";
+import { fmtDate, fmtDateTime, fmtTime, parseHM, startOfLocalDay } from "./time.ts";
 import { parseWhen } from "./when.ts";
 
 export interface AgentEnv extends LlmEnv { DEFAULT_CAP_USD: string; CONFIDENTIAL_TERMS?: string }
-export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number }
+export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null }
 export interface AgentReply { text: string; buttons?: Button[][]; role: string }
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -193,15 +193,16 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string): Promi
     model = r.model; tin = r.tokensIn; tout = r.tokensOut; cost = r.costUsd; pref = r.providerPref;
     const p = parseAgentJson(r.text);
     roleKey = p.role;
-    const io = ctx.tg && ctx.chatId ? { calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); } } : undefined;
+    const io = ctx.tg && ctx.chatId ? { calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); }, attach: ctx.attach ?? undefined } : { attach: ctx.attach ?? undefined };
     const acts = validateActions(p.actions, now, off);
     // The owner's own words decide a clear relative time ("in 2 minutes", "tomorrow at 9am"); the model's arithmetic does not.
-    const when = parseWhen(text, now, off);
+    const pol = (await loadPolicy(db)).policy;
+    const when = parseWhen(text, now, off, parseHM(pol.morning) ?? 540);
     const reminders = acts.filter((a) => a.type === "reminder");
     let adjusted = false;
     if (when !== null && reminders.length === 1 && reminders[0]!.type === "reminder" && Math.abs(reminders[0]!.dueMs - when) > 60000) { reminders[0]!.dueMs = when; adjusted = true; }
     if (adjusted) traceExtra.reminder_time_adjusted = true;
-    done = await executeActions(db, acts, now, off, io, (await loadPolicy(db)).policy);
+    done = await executeActions(db, acts, now, off, io, pol);
     const lines = [p.reply.trim()];
     if (done.length) lines.push(done.map((d) => `- ${d}`).join("\n"));
     out = { role: roleKey, text: warn + lines.join("\n\n"), buttons: p.buttons.length ? [p.buttons.map(([label, act]) => ({ text: label, data: say(act) }))] : undefined };

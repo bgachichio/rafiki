@@ -102,14 +102,14 @@ export async function seeBytes(ctx: Ctx, bytes: Uint8Array, mime = "image/jpeg")
   } catch (e) { return fail(e, "image"); }
 }
 
-export async function seeImage(ctx: Ctx, tg: Telegram, photo: TgFile[]): Promise<Out> {
+export async function seeImage(ctx: Ctx, tg: Telegram, photo: TgFile[], mime = "image/jpeg"): Promise<Out> {
   // Telegram sends several sizes; take the largest that fits the cap.
   const max = limit(ctx.env as MediaEnv, "photo");
   const pick = [...photo].reverse().find((p) => (p.file_size ?? 0) <= max) ?? photo[0];
   if (!pick) return { ok: false, why: "I couldn't read that photo." };
   const got = await fetchFile(ctx, tg, pick, "photo", "photo");
   if (!got.ok) return { ok: false, why: got.why };
-  return seeBytes(ctx, got.bytes);
+  return seeBytes(ctx, got.bytes, mime);
 }
 
 export async function seeVideo(ctx: Ctx, tg: Telegram, f: TgFile): Promise<Out> {

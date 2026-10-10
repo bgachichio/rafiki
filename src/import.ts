@@ -5,7 +5,7 @@ import type { Category } from "./memory.ts";
 import { looksInjected } from "./skills.ts";
 
 export const MAX_ITEMS = 200;
-export const EXPORT_PROMPT = `I am moving to a personal assistant called Rafiki. From everything you know about me and our conversations, write TWO separate Markdown files. Keep my own words wherever possible. Do not invent anything. If you know nothing for a heading, leave that heading out.
+export const EXPORT_PROMPT = `I am moving to a personal assistant called Rafiki. From everything you know about me and our past conversations, write the files below so Rafiki can pick up where you left off. Keep my own words wherever possible. Do not invent anything: if you know nothing for a heading, leave that heading out.
 
 FILE 1, called memory.md, with these headings:
 # memory.md
@@ -35,7 +35,20 @@ FILE 2, called preferences.md, with these headings:
 ## Rules
 - things I have told you to always or never do, in my own words
 
-Put each file in its own code block, headed by its file name, and say after each whether it is complete.`;
+FILES 3 and on: my skills. A skill is a way of working I have shown you more than once (how I write posts, plan a week, review a deal, run a meeting, research a topic, make decisions). Write up to 10, only from real evidence, each as its own file called skill-<short-name>.md in exactly this shape:
+---
+name: <short-name>
+description: <one line: what it is for and when to use it>
+---
+# Steps
+- the steps, in order, in my words
+# Rules
+- what I always or never do here
+# Example
+- one short real example, if you have one
+If I have uploaded or written skill files (SKILL.md) with you, include each of them unchanged as its own file instead.
+
+If you can create downloadable files, create each file and I will upload them all to Rafiki at once. If you cannot, put each file in its own code block, headed by its file name. After the last file, say whether anything is incomplete.`;
 
 export interface Item { section: string; category: Category; text: string; goal: boolean }
 export interface Parsed { items: Item[]; dropped: number; private: number; truncated: boolean }
@@ -111,4 +124,24 @@ export async function undoImport(db: Db, id: number): Promise<number> {
   const r = await db.prepare("DELETE FROM facts WHERE source = ? RETURNING id").bind(`import:${id}`).all<{ id: number }>();
   await db.prepare("UPDATE imports SET status = 'undone' WHERE id = ?").bind(id).run();
   return r.results.length;
+}
+
+/** Pull skill files out of one pasted answer or one big file: each starts with frontmatter that has a name, and runs to the
+ *  next skill, the next memory/preferences heading, or the end of its code block. Returns the skills and the rest. */
+export function extractSkillBlocks(text: string): { skills: { file: string; text: string }[]; rest: string } {
+  const skills: { file: string; text: string }[] = [];
+  const re = /(?:^|\n)[ \t]*---[ \t]*\r?\nname:[ \t]*([^\r\n]+)\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n/g;
+  const starts = [...text.matchAll(re)].map((m) => ({ at: m.index! + (m[0].startsWith("\n") ? 1 : 0), name: m[1]!.trim().replace(/^["']|["']$/g, "") }));
+  if (!starts.length) return { skills, rest: text };
+  let rest = text.slice(0, starts[0]!.at);
+  starts.forEach((st, i) => {
+    const hardEnd = starts[i + 1]?.at ?? text.length;
+    const chunk = text.slice(st.at, hardEnd);
+    // A skill ends at a closing code fence or a memory/preferences heading; whatever follows belongs to the rest.
+    const stop = /\n```|\n[ \t]*#{1,3}[ \t]*(?:FILE \d+|memory|preferences)(?:\.md)?[ \t]*\r?\n|\n[ \t]*(?:FILE \d+|skill-[\w-]+\.md)[^\n]*\n/i.exec(chunk);
+    const body = stop ? chunk.slice(0, stop.index) : chunk;
+    skills.push({ file: `${st.name.replace(/[^\w-]+/g, "-").slice(0, 60)}.md`, text: body.trim() + "\n" });
+    rest += stop ? chunk.slice(stop.index) : "";
+  });
+  return { skills: skills.slice(0, 30), rest };
 }

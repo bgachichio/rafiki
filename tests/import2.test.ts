@@ -5,7 +5,7 @@ import { loadPolicy } from "../src/policy.ts";
 import { loadPrefs } from "../src/prefs.ts";
 import { parsePreferences, splitFiles } from "../src/prefsimport.ts";
 import { proposeModels } from "../src/models.ts";
-import { EXPORT_PROMPT } from "../src/import.ts";
+import { EXPORT_PROMPT, extractSkillBlocks } from "../src/import.ts";
 import { getSetting, setSetting } from "../src/db.ts";
 import type { TgUpdate } from "../src/telegram.ts";
 import { ENV, fakeFetch, makeDb, sent } from "./shim.ts";
@@ -59,8 +59,10 @@ const lastCall = (s: S) => s.fx.tg.filter((c) => c.method === "sendMessage").at(
 const btns = (c: { body: Record<string, unknown> }) => ((c.body.reply_markup as { inline_keyboard: { text: string; callback_data?: string }[][] } | undefined)?.inline_keyboard ?? []).flat();
 const enc = (t: string) => new TextEncoder().encode(t);
 
-test("prompt: it asks for two files with the headings Rafiki reads", () => {
-  assert.match(EXPORT_PROMPT, /TWO separate Markdown files/);
+test("prompt: it asks for memory, preferences and skill files with the headings Rafiki reads", () => {
+  assert.match(EXPORT_PROMPT, /write the files below/);
+  assert.match(EXPORT_PROMPT, /skill-<short-name>\.md/);
+  assert.match(EXPORT_PROMPT, /---\nname: <short-name>\ndescription:/);
   assert.match(EXPORT_PROMPT, /# memory\.md/);
   assert.match(EXPORT_PROMPT, /# preferences\.md/);
   for (const h of ["Call me", "Replies", "Reminders", "Languages", "Daily rhythm", "Rules"]) assert.ok(EXPORT_PROMPT.includes(`## ${h}`), h);
@@ -191,4 +193,17 @@ test("files: saying done after one file ends the wait", async () => {
   await handleUpdate(s.deps, msg("done"));
   assert.equal(await getSetting(s.db, "import_wait"), "");
   assert.match(lastText(s), /that is everything/);
+});
+
+test("super prompt: one pasted answer with memory, preferences and two skills files each lands in the right place", async () => {
+  const answer = ["```markdown", MEMORY, "```", "```markdown", PREFS, "```", "skill-weekly-review.md", "```markdown", "---", "name: weekly-review", "description: How I run my Friday review", "---", "# Steps", "- list wins", "- pick next week's one thing", "```", "skill-posts.md", "```", "---", "name: linkedin-posts", "description: How I write LinkedIn posts", "---", "# Rules", "- open with a number", "```"].join("\n");
+  const ex = extractSkillBlocks(answer);
+  assert.deepEqual(ex.skills.map((k) => k.file), ["weekly-review.md", "linkedin-posts.md"]);
+  assert.match(ex.skills[0]!.text, /pick next week's one thing/);
+  assert.doesNotMatch(ex.skills[0]!.text, /linkedin/);
+  assert.match(ex.rest, /# memory\.md/);
+  assert.match(ex.rest, /# preferences\.md/);
+  assert.doesNotMatch(ex.rest, /name: weekly-review/);
+  const parts = splitFiles(ex.rest);
+  assert.ok(parts.memory.trim() && parts.preferences.trim(), "memory and preferences still split cleanly");
 });

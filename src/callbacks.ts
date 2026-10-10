@@ -52,7 +52,8 @@ export async function reminderCallback(ctx: Ctx, tg: Telegram, chatId: number, d
         const step = r.repeat === "daily" ? 86400000 : 7 * 86400000;
         let next = r.due_ts + step;
         while (next <= ctx.now) next += step;
-        await ctx.db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?)").bind(ctx.now, r.text, next, r.repeat).run();
+        const nr = await ctx.db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(ctx.now, r.text, next, r.repeat).first<{ id: number }>();
+        await ctx.db.prepare("INSERT OR IGNORE INTO reminder_attach (reminder_id, kind, file_id, name) SELECT ?, kind, file_id, name FROM reminder_attach WHERE reminder_id = ?").bind(Number(nr?.id), id).run();
       }
       await tg.send(chatId, "Done.");
     } else if (m[1] === "s") {

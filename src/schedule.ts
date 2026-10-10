@@ -9,7 +9,7 @@ import { loadPolicy, recordSignal } from "./policy.ts";
 import { loadPrefs } from "./prefs.ts";
 import { birthdayLine } from "./vcard.ts";
 import { kes } from "./spend.ts";
-import type { Telegram } from "./telegram.ts";
+import type { Attach, Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, inQuietHours, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
 
 export { canNudge, isPaused };
@@ -17,7 +17,7 @@ export { canNudge, isPaused };
 export const CHASE_GAP_MS = 2 * 3600000;
 export const MAX_CHASES = 3;
 
-export interface Rem { id: number; text: string; due_ts: number; chase_count: number; repeat: string; mode?: string | null; gap_ms?: number | null; max_chase?: number | null }
+export interface Rem { id: number; text: string; due_ts: number; chase_count: number; repeat: string; mode?: string | null; gap_ms?: number | null; max_chase?: number | null; a_kind?: string | null; a_file?: string | null; a_name?: string | null }
 
 /** Pure: what happens to a reminder after it is sent, under the rule it was created with (older reminders chase as before). */
 export function afterSend(r: Rem, now: number): { state: "open" | "flagged" | "sent" | "awaiting"; due_ts: number; chase_count: number } {
@@ -33,14 +33,17 @@ export async function sweepReminders(ctx: Ctx, tg: Telegram, chatId: number): Pr
   const qs = (await getSetting(ctx.db, "quiet_start")) ?? "21:00";
   const qe = (await getSetting(ctx.db, "quiet_end")) ?? "05:30";
   const quiet = inQuietHours(ctx.now, ctx.off, qs, qe);
-  const due = await ctx.db.prepare("SELECT r.id, r.text, r.due_ts, r.chase_count, r.repeat, p.mode, p.gap_ms, p.max_chase FROM reminders r LEFT JOIN reminder_policy p ON p.reminder_id = r.id WHERE r.state = 'open' AND r.due_ts <= ? ORDER BY r.due_ts LIMIT 5").bind(ctx.now).all<Rem>();
+  const due = await ctx.db.prepare("SELECT r.id, r.text, r.due_ts, r.chase_count, r.repeat, p.mode, p.gap_ms, p.max_chase, a.kind AS a_kind, a.file_id AS a_file, a.name AS a_name FROM reminders r LEFT JOIN reminder_policy p ON p.reminder_id = r.id LEFT JOIN reminder_attach a ON a.reminder_id = r.id WHERE r.state = 'open' AND r.due_ts <= ? ORDER BY r.due_ts LIMIT 5").bind(ctx.now).all<Rem>();
   let sent = 0;
   for (const r of due.results) {
     if (quiet && r.chase_count > 0) continue; // first delivery always goes out; chases wait for the morning
     const label = r.chase_count > 0 ? `Still open: ${r.text}` : `Reminder: ${r.text}`;
     const rows = [[{ text: "Done", data: `r:d:${r.id}` }, { text: "In 1 hour", data: `r:s:${r.id}` }, { text: "Tomorrow", data: `r:t:${r.id}` }]];
     if (r.chase_count > 0) rows.push(feedbackRow("chase")); // a reminder you set is not rated; a chase is a nudge
-    await tg.send(chatId, label, rows);
+    // The attachment comes back with the first delivery, as one message: the file, the reminder as its caption, and the buttons.
+    // If Telegram refuses the stored file, the plain reminder still goes out.
+    const att = r.a_kind && r.a_file && r.chase_count === 0 ? { kind: r.a_kind as Attach["kind"], fileId: r.a_file, name: r.a_name ?? "file" } : null;
+    if (!att || !(await tg.sendStored(chatId, att, label, rows))) await tg.send(chatId, label, rows);
     const next = afterSend(r, ctx.now);
     await ctx.db.prepare("UPDATE reminders SET state = ?, due_ts = ?, chase_count = ?, last_sent_ts = ? WHERE id = ?").bind(next.state, next.due_ts, next.chase_count, ctx.now, r.id).run();
     if (next.state === "flagged") await recordSignal(ctx.db, ctx.now, "chase_ignored", String(r.id));

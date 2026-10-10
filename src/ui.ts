@@ -2,7 +2,7 @@
 import type { Ctx } from "./agent.ts";
 import { chat } from "./llm.ts";
 import { getSetting, setSetting } from "./db.ts";
-import { MAX_ITEMS, fileImport, parseExport, planText, undoImport, type Parsed } from "./import.ts";
+import { MAX_ITEMS, extractSkillBlocks, fileImport, parseExport, planText, undoImport, type Parsed } from "./import.ts";
 import { bringMenu, kmAsk, KM, startSkills } from "./knowme.ts";
 import { CATEGORIES, indexText, memoryStats } from "./memory.ts";
 import { rulesLines, startSequence } from "./cards.ts";
@@ -165,7 +165,15 @@ export async function skillsDone(ctx: Ctx, tg: Telegram, chatId: number): Promis
 
 // ---- memory import ------------------------------------------------------------------------------------------------------
 export async function importPlan(ctx: Ctx, tg: Telegram, chatId: number, text: string, source: string, viaFile = false): Promise<void> {
-  const parts = splitFiles(text.slice(0, 120_000), source);
+  // Skills inside the same answer are filed straight away: they are playbooks, not facts, and /skills can remove any of them.
+  const ex = extractSkillBlocks(text.slice(0, 120_000));
+  if (ex.skills.length) {
+    const got: string[] = [];
+    for (const k of ex.skills) { const r = await importSkill(ctx.db, ctx.now, k.file, k.text); if (r.ok) got.push(r.name); }
+    if (got.length) await tg.send(chatId, `Added ${got.length} skill${got.length === 1 ? "" : "s"}: ${got.join(", ")}. See or remove them in /skills.`);
+    if (!ex.rest.replace(/```[a-z]*|FILE \d+[^\n]*|skill-[\w-]+\.md/gi, "").trim()) return;
+  }
+  const parts = splitFiles(ex.rest, source);
   // A pair of files arrives one after the other: keep listening until both kinds are in, or the owner says done.
   const seen = new Set(JSON.parse((await getSetting(ctx.db, "import_seen")) || "[]") as string[]);
   if (parts.memory.trim()) seen.add("memory");

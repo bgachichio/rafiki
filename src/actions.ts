@@ -18,7 +18,7 @@ export type Action =
   | { type: "react"; emoji: string }
   | { type: "calendar_link"; title: string; startMs: number; endMs: number; location: string | null };
 
-export interface ActionIO { calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
+export interface ActionIO { attach?: { kind: string; fileId: string; name: string }; calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
 const REACTIONS = ["👍", "❤", "🔥", "🙏", "🎉", "👀"];
 
 const str = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim().slice(0, max) : null);
@@ -119,7 +119,9 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
           const r = await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(now, main ? a.text : `Coming up ${inText(x.lead)}: ${a.text}`, x.due, main ? a.repeat : "none").first<{ id: number }>();
           const mode = main ? policy.mode : "once";
           await db.prepare("INSERT INTO reminder_policy (reminder_id, mode, gap_ms, max_chase) VALUES (?, ?, ?, ?)").bind(Number(r?.id), mode, Math.round(policy.gapH * 3600000), policy.max).run();
+          if (main && io?.attach) await db.prepare("INSERT OR REPLACE INTO reminder_attach (reminder_id, kind, file_id, name) VALUES (?, ?, ?, ?)").bind(Number(r?.id), io.attach.kind, io.attach.fileId, io.attach.name).run();
         }
+        if (io?.attach) a.text = `${a.text} (with ${io.attach.name})`;
         done.push(slots.length === 1 ? `Reminder set for ${fmtDateTime(slots[0]!.due, off)}: ${a.text}` : `Reminders set for ${slots.map((x) => fmtDateTime(x.due, off)).join(", ")}: ${a.text}`);
         break;
       }

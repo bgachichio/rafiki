@@ -211,6 +211,6 @@ test("when: relative reminder times are computed by code, not guessed", async ()
   assert.equal(parseWhen("tomorrow at 9pm", now, 180), Date.UTC(2026, 9, 3, 18, 0));
   assert.equal(parseWhen("tomorrow at 12am", now, 180), Date.UTC(2026, 9, 2, 21, 0));
   assert.equal(parseWhen("remind me about the quote", now, 180), null);
-  assert.equal(parseWhen("tomorrow", now, 180), null);
+  assert.equal(parseWhen("tomorrow", now, 180), Date.UTC(2026, 9, 3, 6, 0), "a bare tomorrow is the owner's morning");
   assert.equal(parseWhen("in 9999 days", now, 180), null);
 });

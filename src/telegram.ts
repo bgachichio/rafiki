@@ -14,7 +14,20 @@ export interface TgMessage {
   photo?: TgFile[]; document?: TgFile; sticker?: unknown; animation?: TgFile;
   location?: TgLocation; venue?: { title?: string; location?: TgLocation }; contact?: { phone_number?: string; first_name?: string; last_name?: string }; poll?: unknown; dice?: unknown;
   forward_origin?: { type?: string; sender_user?: { first_name?: string; last_name?: string }; sender_user_name?: string; chat?: { title?: string }; date?: number };
+  reply_to_message?: TgMessage;
   forward_date?: number; forward_from?: { first_name?: string; last_name?: string }; forward_sender_name?: string;
+}
+export type AttachKind = "document" | "photo" | "voice" | "audio" | "video";
+export interface Attach { kind: AttachKind; fileId: string; name: string }
+/** The file, photo or voice note a message carries, if any, as something a reminder can send back later. */
+export function attachOf(m?: TgMessage): Attach | null {
+  if (!m) return null;
+  if (m.document) return { kind: "document", fileId: m.document.file_id, name: m.document.file_name ?? "file" };
+  if (m.photo?.length) return { kind: "photo", fileId: m.photo[m.photo.length - 1]!.file_id, name: "photo" };
+  if (m.voice) return { kind: "voice", fileId: m.voice.file_id, name: "voice note" };
+  if (m.audio) return { kind: "audio", fileId: m.audio.file_id, name: m.audio.file_name ?? "audio" };
+  if (m.video) return { kind: "video", fileId: m.video.file_id, name: m.video.file_name ?? "video" };
+  return null;
 }
 export interface TgLocation { latitude: number; longitude: number; live_period?: number }
 export interface TgFile { file_id: string; file_size?: number; mime_type?: string; file_name?: string }
@@ -56,6 +69,13 @@ export class Telegram {
       body.reply_markup = MENU;
     }
     return this.call("sendMessage", body);
+  }
+  /** Send back a file Telegram already holds, by its id: no download, no upload. */
+  async sendStored(chatId: number, a: Attach, caption?: string, buttons?: Button[][]): Promise<boolean> {
+    const method = { document: "sendDocument", photo: "sendPhoto", voice: "sendVoice", audio: "sendAudio", video: "sendVideo" }[a.kind];
+    const markup = buttons?.length ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data.slice(0, 64) }))) } } : {};
+    const r = (await this.call(method, { chat_id: chatId, [a.kind]: a.fileId, ...(caption ? { caption: caption.slice(0, 1000) } : {}), ...markup })) as { ok?: boolean };
+    return r.ok === true;
   }
   /** Resolve a file id, then download it. Returns null on any failure. */
   async download(fileId: string): Promise<Uint8Array | null> {

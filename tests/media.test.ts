@@ -226,3 +226,33 @@ test("stickers and polls from the owner get a plain, honest reply", async () => 
   assert.match(sent(s.fx.tg).pop()!, /can't read polls you send/);
   assert.equal(s.fx.llm.length, 0);
 });
+
+test("reminder with an attachment: a file captioned 'remind me...' comes back as one message with the file, the reminder and the buttons", async () => {
+  const { sweepReminders } = await import("../src/schedule.ts");
+  const { Telegram } = await import("../src/telegram.ts");
+  const s = setup([agentJson({ reply: "I'll remind you on Thursday morning, with the contract.", actions: [{ type: "reminder", text: "Call John about the contract", due: "2026-11-05T09:00" }] })]);
+  await owned(s);
+  const r = await handleUpdate(s.deps, base({ document: { file_id: "doc-77", file_name: "contract.pdf", mime_type: "application/pdf", file_size: 90_000 }, caption: "remind me to call John about this in 2 days, morning hours" }));
+  assert.equal(r, "reminder-attach");
+  assert.equal(s.fx.llm.length, 1, "the file itself is not read: only the agent turn runs");
+  assert.ok(sent(s.fx.tg).some((t) => /Reminder set for Thu 05-11-2026 09:00: Call John about the contract \(with contract\.pdf\)/.test(t)));
+  const a = s.db.raw.prepare("SELECT kind, file_id, name FROM reminder_attach").get() as { kind: string; file_id: string; name: string };
+  assert.deepEqual({ ...a }, { kind: "document", file_id: "doc-77", name: "contract.pdf" });
+  const due = Date.UTC(2026, 10, 5, 6, 1);
+  const tg = new Telegram("t", s.fx.f);
+  await sweepReminders({ db: s.db, env: ENV, f: s.fx.f, now: due, off: 180 }, tg, OWNER);
+  const doc = s.fx.tg.filter((c) => c.method === "sendDocument").pop()!;
+  assert.equal(doc.body.document, "doc-77");
+  assert.equal(doc.body.caption, "Reminder: Call John about the contract");
+  assert.ok(JSON.stringify(doc.body.reply_markup).includes("r:d:"), "Done, later and tomorrow ride on the file message");
+});
+
+test("reminder with an attachment: replying to an earlier photo with 'remind me' attaches that photo", async () => {
+  const s = setup([agentJson({ reply: "Set.", actions: [{ type: "reminder", text: "Pay this bill", due: "2026-11-04T09:00" }] })]);
+  await owned(s);
+  const photoMsg = { message_id: 5, chat: { id: OWNER }, photo: [{ file_id: "p-small" }, { file_id: "p-big" }] } as TgMessage;
+  await handleUpdate(s.deps, base({ text: "remind me to pay this tomorrow", reply_to_message: photoMsg }));
+  const a = s.db.raw.prepare("SELECT kind, file_id FROM reminder_attach").get() as { kind: string; file_id: string };
+  assert.deepEqual({ ...a }, { kind: "photo", file_id: "p-big" });
+  assert.match(String((s.fx.llm[0]!.body.messages as { content: string }[]).at(-1)!.content), /replying to an earlier photo/);
+});
