@@ -69,6 +69,7 @@ export function fakeFetch(queue: LlmReply[], files: Record<string, Uint8Array> =
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
     if (u.includes("openrouter.ai/api/v1/key")) return new Response(JSON.stringify({ data: { label: "k" } }), { status: (init?.headers as Record<string, string> | undefined)?.authorization === "Bearer or-test" ? 200 : 401 });
+    if (u.includes("openrouter.ai/api/v1/credits")) return new Response(JSON.stringify({ data: { total_credits: 10, total_usage: 2.5 } }), { status: 200 });
     if (u.includes("openrouter.ai") && u.includes("/endpoints")) return new Response("{}", { status: u.includes("nonexistent") ? 404 : 200 });
     if (u.includes("openrouter.ai")) {
       llm.push({ url: u, method: "chat", body });

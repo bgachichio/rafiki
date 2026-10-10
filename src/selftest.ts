@@ -3,7 +3,7 @@
 import type { Ctx } from "./agent.ts";
 import { SAMPLE_VOICE_OGG_BASE64, SAMPLE_VOICE_TEXT } from "./assets/voice.gen.ts";
 import { MARK_PNG_BASE64 } from "./assets/mark.gen.ts";
-import { chat } from "./llm.ts";
+import { chat, creditLeft } from "./llm.ts";
 import { seeBytes, transcribeBytes } from "./media.ts";
 
 export interface Check { name: string; ok: boolean; ms: number; detail: string }
@@ -38,6 +38,10 @@ export async function runSelfTest(ctx: Ctx): Promise<Check[]> {
   out.push(await timed("Seeing (photo)", async () => {
     const r = await seeBytes(ctx, bytesOf(MARK_PNG_BASE64), "image/png");
     return r.ok ? { ok: r.text.length > 20, detail: `"${r.text.slice(0, 70).replace(/\s+/g, " ")}..."` } : { ok: false, detail: r.why };
+  }));
+  out.push(await timed("Model credit (OpenRouter)", async () => {
+    const left = await creditLeft(ctx.env, ctx.f);
+    return left === null ? { ok: true, detail: "the account does not report a balance" } : { ok: left >= 1, detail: `USD ${left.toFixed(2)} left${left < 1 ? ": top up at openrouter.ai/settings/credits" : ""}` };
   }));
   return out;
 }

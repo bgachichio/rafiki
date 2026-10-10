@@ -164,13 +164,18 @@ test("llm routing: S0 plain, S1 data_collection deny, S2 zdr then degrade, S3 re
 
   await assert.rejects(() => chat(ENV, fakeFetch([]).f, { messages: msgs, sens: "S3", deep: false }), LlmError);
 
-  q = fakeFetch([{ status: 402 }, { content: "free" }]);
+  q = fakeFetch([{ status: 402 }, { content: "fits" }]);
+  const low = await chat(ENV, q.f, { messages: msgs, sens: "S1", deep: false });
+  assert.equal(low.text, "fits", "a low balance gets a second try with a tighter ceiling");
+  assert.deepEqual(q.llm.map((c) => c.body.max_tokens), [3000, 1000]);
+
+  q = fakeFetch([{ status: 402 }, { status: 402 }, { content: "free" }]);
   const s0 = await chat(ENV, q.f, { messages: msgs, sens: "S0", deep: false });
   assert.equal(s0.model, "free/model:free");
 
-  q = fakeFetch([{ status: 402 }]);
+  q = fakeFetch([{ status: 402 }, { status: 402 }]);
   await assert.rejects(() => chat(ENV, q.f, { messages: msgs, sens: "S1", deep: false }), CreditError);
-  assert.equal(q.llm.length, 1, "S1 must never fall back to a free model");
+  assert.equal(q.llm.length, 2, "S1 must never fall back to a free model");
 });
 
 test("telegram client: works with a fetch that, like Workers' fetch, refuses to run with another object as this", async () => {

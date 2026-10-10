@@ -91,6 +91,9 @@ export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens:
     pref = prefFor("S2", true);
     res = await once(env, f, model, opts.messages, pref, maxTokens);
   }
+  // OpenRouter refuses (402) when the balance cannot cover the worst case, max_tokens included. A low balance can still pay
+  // for a normal reply, so ask again with a tighter ceiling before calling it out of credit.
+  if (res.status === 402 && maxTokens > 1000) res = await once(env, f, model, opts.messages, pref, 1000);
   // Out of credit: only low-stakes (S0) text may fall back to a free model.
   if (res.status === 402) {
     if (opts.sens !== "S0" || opts.model) throw new CreditError("credit exhausted"); // media and personal content never fall back to a free model
@@ -118,4 +121,14 @@ export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens:
     cost = (tin * p[0] + tout * p[1]) / 1e6;
   }
   return { text, model, tokensIn: tin, tokensOut: tout, costUsd: cost, providerPref: prefLabel(pref), truncated: j.choices?.[0]?.finish_reason === "length" };
+}
+
+/** Credit left on the OpenRouter account, in USD; null when the account does not say (or the call fails). */
+export async function creditLeft(env: LlmEnv, f: Fetch): Promise<number | null> {
+  try {
+    const r = await f("https://openrouter.ai/api/v1/credits", { headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` } });
+    if (!r.ok) return null;
+    const d = ((await r.json()) as { data?: { total_credits?: number; total_usage?: number } }).data;
+    return typeof d?.total_credits === "number" && typeof d.total_usage === "number" ? Math.max(0, d.total_credits - d.total_usage) : null;
+  } catch { return null; }
 }
