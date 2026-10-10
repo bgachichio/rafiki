@@ -214,3 +214,9 @@ test("when: relative reminder times are computed by code, not guessed", async ()
   assert.equal(parseWhen("tomorrow", now, 180), Date.UTC(2026, 9, 3, 6, 0), "a bare tomorrow is the owner's morning");
   assert.equal(parseWhen("in 9999 days", now, 180), null);
 });
+
+test("agent JSON: a reply cut off by the token ceiling keeps the text that arrived and says so", async () => {
+  const { parseAgentJson } = await import("../src/agent.ts");
+  const p = parseAgentJson('{"role":"advisor","reply":"Big idea: bookmarks.\\n\\nWhat matters:\\n1. It keeps a bookmark.\\n2');
+  assert.match(p.reply, /^Big idea: bookmarks\.\n\nWhat matters:\n1\. It keeps a bookmark\.\n2\.\.\.\n\(I was cut short/);
+});

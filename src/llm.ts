@@ -23,6 +23,7 @@ export interface LlmResult {
   tokensOut: number;
   costUsd: number;
   providerPref: string;
+  truncated?: boolean;
 }
 export class CreditError extends Error {}
 export class LlmError extends Error {}
@@ -78,7 +79,9 @@ async function once(env: LlmEnv, f: Fetch, model: string, messages: Msg[], pref:
 
 export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens: Sens; deep: boolean; maxTokens?: number; model?: string }): Promise<LlmResult> {
   if (opts.sens === "S3") throw new LlmError("S3 content must never reach a model");
-  const maxTokens = opts.maxTokens ?? 900;
+  // Thinking models spend output tokens on reasoning before the reply; 900 cut deep answers off mid-sentence (10-10-2026).
+  // Tokens are billed as used, so a roomy ceiling costs nothing extra on short replies.
+  const maxTokens = opts.maxTokens ?? 3000;
   let model = opts.model ?? (opts.deep ? env.MODEL_SMART : env.MODEL_FAST);
   let pref = prefFor(opts.sens, false);
   let res = await once(env, f, model, opts.messages, pref, maxTokens);
@@ -103,7 +106,7 @@ export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens:
   if (!res.ok) throw new LlmError(`model request failed (${res.status})`);
 
   const j = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: string }; finish_reason?: string }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
   };
   const text = j.choices?.[0]?.message?.content ?? "";
@@ -114,5 +117,5 @@ export async function chat(env: LlmEnv, f: Fetch, opts: { messages: Msg[]; sens:
     const p = PRICE_FALLBACK[model] ?? [0, 0];
     cost = (tin * p[0] + tout * p[1]) / 1e6;
   }
-  return { text, model, tokensIn: tin, tokensOut: tout, costUsd: cost, providerPref: prefLabel(pref) };
+  return { text, model, tokensIn: tin, tokensOut: tout, costUsd: cost, providerPref: prefLabel(pref), truncated: j.choices?.[0]?.finish_reason === "length" };
 }
