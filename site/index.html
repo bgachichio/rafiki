@@ -73,6 +73,11 @@ p{margin:0 0 1.1rem}
 .hl svg path{stroke:var(--mark);stroke-width:9;stroke-linecap:round;fill:none;opacity:.95}
 .hl:hover svg path{stroke:var(--accent)}
 .alt{margin:1rem 0 0;font-size:.9375rem;color:var(--ink-2)}
+.how{list-style:none;padding:0;margin:2.25rem auto 0;display:flex;justify-content:center;flex-wrap:wrap;gap:.5rem 1.75rem;max-width:34rem;font-size:.9375rem;color:var(--ink-2);counter-reset:s}
+.how li{counter-increment:s;display:flex;align-items:baseline;gap:.5rem}
+.how li::before{content:counter(s);font-family:"Courier Prime",ui-monospace,monospace;color:var(--accent)}
+.how li strong{color:var(--ink);font-weight:600}
+@media (max-width:520px){.how{flex-direction:column;align-items:center;gap:.5rem}}
 .alt a{color:var(--ink)}
 .fine{font-size:.8125rem;color:var(--ink-2)}
 h2{font:600 1.125rem/1.4 var(--sans);letter-spacing:-.006em;margin:4rem 0 1rem}
@@ -147,6 +152,8 @@ dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
   <g fill="currentColor"><circle cx="92" cy="108" r="3"/><circle cx="148" cy="108" r="3"/><circle cx="110" cy="165" r="3.5"/><circle cx="130" cy="165" r="3.5"/></g></svg>
   <p class="lead">Rafiki is a personal assistant that lives in Telegram. It remembers what you are working on, chases what you drop, and asks before it acts.</p>
   <p>There is no new app and no dashboard to check. You message it, or send a voice note, a photo or your location. You run your own copy, with your own bot, your own AI key and your own data, and the author never sees your messages. It is free and open source.</p>
+
+  <ol class="how" aria-label="How Rafiki works"><li><span><strong>You message it</strong></span></li><li><span><strong>It remembers and thinks</strong></span></li><li><span><strong>It acts</strong>, asking first</span></li></ol>
 
   <p class="cta"><a class="hl" href="https://gachichio.org/rafiki/setup/">Set up your Rafiki, free<svg viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path d="M4 8 C40 3, 90 11, 140 6 S240 4, 296 8"/></svg></a></p>
   <p class="alt">Five steps, about 12 minutes. Want the detail first? <a href="https://gachichio.org/rafiki/">Learn more</a>.</p>
