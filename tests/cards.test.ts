@@ -207,10 +207,20 @@ test("signals: a thumbs down on the brief and 'make it shorter' are recorded", a
   assert.deepEqual(kinds, ["brief_down", "shorter"]);
 });
 
-test("onboarding: finishing it offers the walk-through", async () => {
+test("onboarding: finishing it shows the short checklist: calibrate, test the senses, connect your world, then what your Rafiki can do", async () => {
   const s = await setup();
   await setSetting(s.db, "ob_step", "time");
   await handleUpdate(s.deps, tap("ob:t:07:00"));
-  const offer = s.fx.tg.filter((c) => c.method === "sendMessage").find((c) => String(c.body.text).startsWith("One more thing"))!;
-  assert.ok(btns(offer).some((b) => b.callback_data === "dc:seq"));
+  const offer = s.fx.tg.filter((c) => c.method === "sendMessage").find((c) => /Three short steps left/.test(String(c.body.text)))!;
+  assert.match(String(offer.body.text), /○ Connect your world: calendar, mail and hands/);
+  assert.deepEqual(btns(offer).map((b) => b.callback_data), ["dc:seq", "mc:start", "hd:connect", "hd:abilities"]);
+  await setSetting(s.db, "ob_media", "1");
+  await handleUpdate(s.deps, tap("hd:connected"));
+  const again = s.fx.tg.filter((c) => c.method === "sendMessage").pop()!;
+  assert.match(String(again.body.text), /^One short step left/);
+  assert.match(String(again.body.text), /✓ Test my ears and eyes/);
+  await handleUpdate(s.deps, tap("hd:abilities"));
+  const can = String(s.fx.tg.filter((c) => c.method === "sendMessage").pop()!.body.text);
+  assert.match(can, /^What your Rafiki can do, as set up today:/);
+  assert.match(can, /✗ Send, post, change or create anything in another app without your tap \(and without hands it cannot act in other apps at all\)/);
 });

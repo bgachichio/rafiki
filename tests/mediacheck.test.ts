@@ -38,7 +38,7 @@ test("media check: each kind ticks once, in any order, and the last one ends the
   assert.match(sent(s.fx.tg).at(-1)!, /✓ your location/);
   await mediaTick(s.ctx, s.ctx.tg!, 100200300, "voice");
   await mediaTick(s.ctx, s.ctx.tg!, 100200300, "file");
-  assert.match(sent(s.fx.tg).at(-1)!, /All four reached me/);
+  assert.ok(sent(s.fx.tg).some((t) => /All four reached me/.test(t)));
   assert.equal(await getSetting(s.db, "mc"), "");
   const n = sent(s.fx.tg).length;
   await mediaTick(s.ctx, s.ctx.tg!, 100200300, "voice");

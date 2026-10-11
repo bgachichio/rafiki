@@ -5,6 +5,7 @@ import { SAMPLE_VOICE_OGG_BASE64, SAMPLE_VOICE_TEXT } from "./assets/voice.gen.t
 import { MARK_PNG_BASE64 } from "./assets/mark.gen.ts";
 import { chat, creditLeft } from "./llm.ts";
 import { seeBytes, transcribeBytes } from "./media.ts";
+import { client, loadCatalogue, zapToken } from "./zapier.ts";
 
 export interface Check { name: string; ok: boolean; ms: number; detail: string }
 
@@ -38,6 +39,18 @@ export async function runSelfTest(ctx: Ctx): Promise<Check[]> {
   out.push(await timed("Seeing (photo)", async () => {
     const r = await seeBytes(ctx, bytesOf(MARK_PNG_BASE64), "image/png");
     return r.ok ? { ok: r.text.length > 20, detail: `"${r.text.slice(0, 70).replace(/\s+/g, " ")}..."` } : { ok: false, detail: r.why };
+  }));
+  if (ctx.tg) out.push(await timed("Telegram delivery", async () => {
+    const r = (await ctx.tg!.api("getWebhookInfo", {})) as { result?: { url?: string; pending_update_count?: number; last_error_message?: string } };
+    const url = r.result?.url ?? "";
+    const mine = /\/tg$/.test(url) && (!ctx.env.PUBLIC_URL || url.startsWith(ctx.env.PUBLIC_URL));
+    return { ok: mine && !(r.result?.pending_update_count ?? 0), detail: mine ? `messages reach me${r.result?.pending_update_count ? `, ${r.result.pending_update_count} waiting` : ""}${r.result?.last_error_message ? `; last error: ${r.result.last_error_message}` : ""}` : `Telegram is sending my messages elsewhere (${url ? new URL(url).host : "nowhere"}). A Zapier or other trigger on this bot takes them over; run ./deploy.sh webhook to take them back` };
+  }));
+  if (await zapToken(ctx)) out.push(await timed("Hands (Zapier)", async () => {
+    const m = await client(ctx);
+    const n = (await m!.tools()).length;
+    const cat = await loadCatalogue(ctx);
+    return { ok: n > 0, detail: `${cat ? new Set(cat.actions.map((a) => a.app)).size : 0} apps, ${cat?.actions.length ?? 0} actions` };
   }));
   out.push(await timed("Model credit (OpenRouter)", async () => {
     const left = await creditLeft(ctx.env, ctx.f);

@@ -17,6 +17,7 @@ import type { Attach, Button, Fetch, Telegram } from "./telegram.ts";
 import { fmtDate, fmtDateTime, fmtTime, parseHM, startOfLocalDay } from "./time.ts";
 import { parseWhen } from "./when.ts";
 import { NOTES_WORDS, notesContext, searchNotes } from "./notes.ts";
+import { catalogueContext, HANDS_WORDS, loadCatalogue, proposeZap } from "./zapier.ts";
 
 export interface AgentEnv extends LlmEnv { DEFAULT_CAP_USD: string; CONFIDENTIAL_TERMS?: string }
 export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null; untrusted?: boolean; noSpend?: boolean }
@@ -171,6 +172,10 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
   let sens: Sens = classify(text) === "S2" || LOCATION_WORDS.test(text) ? "S2" : classify(text);
   const skillHits = await recallSkills(db, text, ftsQuery(text), 3, 4000);
   if (skillHits.length && sens === "S0") sens = "S1"; // the owner's playbooks can carry personal detail, so they never go to a free model
+  // Hands: the owner's Zapier apps are shown only when the message could need one, and never for text from outside.
+  // A request that may touch the owner's apps is personal, so it gets full context and a model that keeps no data.
+  const hands = !ctx.untrusted && HANDS_WORDS.test(text) ? await loadCatalogue(ctx) : null;
+  if (hands && sens === "S0") sens = "S1";
   const withContext = sens !== "S0";
   const history = withContext ? await recentMessages(db, 8) : [];
   const hits = withContext ? await recall(db, text, 6, new Set(history.map((h) => h.id))) : [];
@@ -180,7 +185,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
   const context = withContext ? await buildContext(db, now, off, sens === "S2" || wantsLocation, hits, wantsLocation, skillHits) : `NOW: ${fmtDateTime(now, off)} (East Africa Time).`;
   const messages: Msg[] = [
     { role: "system", content: systemPromptFor((await getSetting(db, "bot_name")) ?? "Rafiki") },
-    { role: "system", content: noteHits?.length ? `${context}\n${notesContext(noteHits)}` : context },
+    { role: "system", content: [context, noteHits?.length ? notesContext(noteHits) : "", hands ? catalogueContext(hands) : ""].filter(Boolean).join("\n") },
     ...history.map((m) => ({ role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user", content: m.text })),
     { role: "user", content: hint ? `${text}\n\n[context hint, not from the owner: ${hint}]` : text },
   ];
@@ -217,7 +222,15 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
     done = await executeActions(db, acts, now, off, io, pol);
     const lines = [p.reply.trim()];
     if (done.length) lines.push(done.map((d) => `- ${d}`).join("\n"));
-    out = { role: roleKey, text: warn + lines.join("\n\n"), buttons: p.buttons.length ? [p.buttons.map(([label, act]) => ({ text: label, data: say(act) }))] : undefined };
+    let zapButtons: Button[][] | undefined;
+    const zap = acts.find((a) => a.type === "zap");
+    if (zap && zap.type === "zap") {
+      const z = await proposeZap(ctx, zap.tool, zap.goal, text);
+      lines.push(z.text);
+      zapButtons = z.buttons;
+      traceExtra.zap = zap.tool;
+    }
+    out = { role: roleKey, text: warn + lines.join("\n\n"), buttons: zapButtons ?? (p.buttons.length ? [p.buttons.map(([label, act]) => ({ text: label, data: say(act) }))] : undefined) };
   } catch (e) {
     status = e instanceof CreditError ? "credit" : "error";
     out = {

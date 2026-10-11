@@ -5,9 +5,10 @@ import { KM } from "./knowme.ts";
 import { ONBOARD_GREETING } from "./prompts.ts";
 import type { Telegram } from "./telegram.ts";
 import { parseHM } from "./time.ts";
+import { nextSteps } from "./hands.ts";
 
 const HANDSHAKE = "Here's how I work. I read, think, remind and draft freely. Anything sent in your name, or that spends money, waits for your tap, and I never touch your payments. /pause stops me any time. OK?";
-const MORE = "In short: I can record reminders, tasks, goals, your customer ledger and spend. I cannot message other people, move money or delete anything. Everything I do is listed in /log, and /why explains my last decision. Mail and calendar come in a later release.";
+const MORE = "In short: I can record reminders, tasks, goals, your customer ledger and spend, read your calendar and mail if you connect them, and act in your other apps through Zapier, always after your tap. I cannot move money or delete anything. Everything I do is listed in /log, and /why explains my last decision.";
 
 export async function startOnboarding(ctx: Ctx, tg: Telegram, chatId: number, name: string): Promise<void> {
   if (!(await getSetting(ctx.db, "brief_time"))) await setSetting(ctx.db, "brief_time", "08:00");
@@ -60,7 +61,7 @@ export async function onboardingText(ctx: Ctx, tg: Telegram, chatId: number, tex
     await setSetting(ctx.db, "brief_time", text.trim().padStart(5, "0"));
     await setSetting(ctx.db, "ob_step", "done");
     await tg.send(chatId, `Set. Your brief arrives at ${text.trim().padStart(5, "0")}. Tell me anything else any time, or use the menu below.`, undefined, true);
-    await tg.send(chatId, "One more thing, and it makes me much more useful: nine quick taps to say how I should remind you, how long my replies should be, and when to stay quiet. You can skip any.", [[{ text: "Set up how I work", data: "dc:seq" }], [{ text: "Check voice, photos and files", data: "mc:start" }, { text: "Later", data: "ob:ok" }]]);
+    await nextSteps(ctx, tg, chatId);
     return true;
   }
   return false;
@@ -83,8 +84,8 @@ export async function onboardingCallback(ctx: Ctx, tg: Telegram, chatId: number,
     if (v === "other") { await setSetting(ctx.db, "ob_step", "time_other"); await tg.send(chatId, "What time? Write it like 07:15."); return true; }
     if (parseHM(v) !== null) await setSetting(ctx.db, "brief_time", v);
     await setSetting(ctx.db, "ob_step", "done");
-    await tg.send(chatId, `Set for ${v}. I'll also tell you what I can look at next when you ask. Mail and calendar come in a later release. Use the menu below any time.`, undefined, true);
-    await tg.send(chatId, "One more thing, and it makes me much more useful: nine quick taps to say how I should remind you, how long my replies should be, and when to stay quiet. You can skip any.", [[{ text: "Set up how I work", data: "dc:seq" }], [{ text: "Check voice, photos and files", data: "mc:start" }, { text: "Later", data: "ob:ok" }]]);
+    await tg.send(chatId, `Set for ${v}. Use the menu below any time.`, undefined, true);
+    await nextSteps(ctx, tg, chatId);
     return true;
   }
   return false;

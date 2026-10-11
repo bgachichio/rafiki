@@ -15,6 +15,7 @@ export const ACTION_GATE: Readonly<Record<string, Gate>> = {
   poll: "G1", // sent only to the owner's own chat
   react: "G1",
   calendar_link: "G1", // builds a link and a file for the owner to tap; it writes to no calendar
+  zap: "G1", // a proposal only: reads run, writes wait for the owner's tap in a confirmation card (zapier.ts)
 };
 /** G2 and above need an approval tap. No such action exists in this release, so none is executable. */
 export function mayExecute(type: string): boolean {

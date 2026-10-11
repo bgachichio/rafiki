@@ -23,6 +23,9 @@ export async function mediaTick(ctx: Ctx, tg: Telegram, chatId: number, kind: Me
   if (KINDS.every((k) => m[k])) {
     await setSetting(ctx.db, "mc", "");
     await tg.send(chatId, `${board(m)}\n\nAll four reached me. Voice, photos, files and locations work from this phone.`);
+    await setSetting(ctx.db, "ob_media", "1");
+    const { resumeChecklist } = await import("./cards.ts");
+    await resumeChecklist(ctx, tg, chatId);
     return;
   }
   await setSetting(ctx.db, "mc", JSON.stringify(m));

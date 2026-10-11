@@ -24,6 +24,8 @@ import { calendarCallback, reminderCallback } from "./callbacks.ts";
 import { keepRead, linkToRead, readUrl } from "./reader.ts";
 import { focusCallback, setOwnFocus } from "./focus.ts";
 import { codeCallback } from "./bridge.ts";
+import { zapCallback } from "./zapier.ts";
+import { handsCallback, nextSteps, takeToken } from "./hands.ts";
 import { connectCallback } from "./connections.ts";
 import { EXPLAIN } from "./prompts.ts";
 
@@ -71,6 +73,8 @@ async function handleText(ctx: Ctx, tg: Telegram, chatId: number, text: string):
     await command(ctx, tg, chatId, (raw ?? "").toLowerCase().split("@")[0] ?? "", rest.join(" "));
     return;
   }
+  // A Zapier token pasted after /hands: taken before anything else reads the message, then the message is deleted.
+  if (!/\s/.test(t) && t.length >= 20 && !/^https?:/i.test(t) && (await getSetting(ctx.db, "zap_wait")) === "1") { await takeToken(ctx, tg, chatId, t); return; }
   if (await isPaused(ctx)) { await tg.send(chatId, "I'm paused. /resume when you want me back."); return; }
   const menu = isMenuWord(t);
   if (menu === "settings") { await command(ctx, tg, chatId, "/settings", ""); return; }
@@ -127,6 +131,8 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   if (data === "ex:next") { await exportNext(ctx, tg, chatId); return; }
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
   if (await focusCallback(ctx, tg, chatId, data)) return;
+  if (await zapCallback(ctx, tg, chatId, data)) return;
+  if (await handsCallback(ctx, tg, chatId, data)) return;
   if (await codeCallback(ctx, tg, chatId, data)) return;
   if (await connectCallback(ctx, tg, chatId, data)) return;
   if (await cardCallback(ctx, tg, chatId, data)) return;

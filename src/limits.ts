@@ -10,12 +10,13 @@ const kb = (n: number): string => `${Math.round(n / 1000)} KB`;
 
 export const LIMITS: readonly LimitGroup[] = [
   {
-    title: "It cannot act for you outside this chat",
+    title: "It cannot act for you without your tap",
     items: [
-      "Send anything to anyone but you. No emails, texts, messages or calendar invites go out. It only writes to your own Telegram chat.",
+      "Send, post, create or change anything in another app on its own. Without hands it only writes to your own Telegram chat. With hands (your own Zapier, /hands), each send, post, draft or change is shown to you first and happens only when you tap Do it.",
+      "Delete anything in your apps, or make raw API calls, even where your Zapier could. Those actions are never offered to it.",
       "Move, spend or hold money. It logs spends you tell it about and adds fees from your own fee table. It has no access to M-PESA, cards or bank accounts.",
       "Buy, book, sign or submit anything: forms, waivers and payments are yours to complete.",
-      "Change your calendar. Calendars are read-only, so it cannot add, move or delete events. It can hand you an Add to calendar button or file, which you tap yourself.",
+      "Change your calendar on its own. Calendars it reads are read-only; it can hand you an Add to calendar button or file, or, with hands, create an event after your tap.",
       "Browse the web, open apps or use your phone or computer. It reads a public link you send it (an article, an X post, a PDF), and nothing behind a login.",
       "Run code or change a repository by itself. /code hands a task you confirm to your own Claude Code routine, which works on its own branch.",
     ],

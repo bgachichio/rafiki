@@ -64,6 +64,7 @@ async function afterCard(ctx: Ctx, tg: Telegram, chatId: number, seq: boolean): 
 }
 
 async function endSequence(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  await setSetting(ctx.db, "ob_cards", "1");
   await summaryCard(ctx, tg, chatId);
   if ((await getSetting(ctx.db, "dc_after")) === "models") { await setSetting(ctx.db, "dc_after", ""); await modelProposal(ctx, tg, chatId); }
 }
@@ -99,6 +100,8 @@ export async function cardCallback(ctx: Ctx, tg: Telegram, chatId: number, data:
   if (data === "dc:sum:all") {
     for (const k of SEQ) { const spec = SPECS[k]!; const st = await ctx.db.prepare("SELECT status FROM pref_state WHERE key = ? OR key = ?").bind(k, `setting.${k}`).first<{ status: string }>(); if (st?.status !== "confirmed") await spec.apply(ctx, await spec.effective(ctx)); }
     await tg.send(chatId, "All confirmed. I'll ask again only if what I see you do suggests a change, and never more than one question a day.");
+    await setSetting(ctx.db, "ob_cards", "1");
+    await resumeChecklist(ctx, tg, chatId);
     return true;
   }
   if (data === "dc:sum:review") { await startSequence(ctx, tg, chatId); return true; }
@@ -179,4 +182,11 @@ export async function modelCardCallback(ctx: Ctx, tg: Telegram, chatId: number, 
   await setSetting(ctx.db, "dc_prop", "");
   await tg.send(chatId, `Saved. ${lines.join("; ")}. Change any time with /model.`);
   return true;
+}
+
+/** During onboarding, finishing a step brings back the checklist so the owner always sees the next step. */
+export async function resumeChecklist(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  if ((await getSetting(ctx.db, "ob_step")) !== "done" || (await getSetting(ctx.db, "ob_finished")) === "1") return;
+  const { nextSteps } = await import("./hands.ts");
+  await nextSteps(ctx, tg, chatId);
 }

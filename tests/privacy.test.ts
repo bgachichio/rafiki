@@ -173,7 +173,7 @@ test("erase: the cancel button disarms it", async () => {
 test("limits: /limits lists what Rafiki cannot do, and /help names the new commands", async () => {
   const s = await setup();
   await handleUpdate(s.deps, msg("/limits"));
-  assert.ok(sent(s.fx.tg).at(-1)!.includes("Send anything to anyone but you"));
+  assert.ok(sent(s.fx.tg).at(-1)!.includes("happens only when you tap Do it"));
   await handleUpdate(s.deps, msg("/help"));
   assert.ok(["/export", "/erase", "/limits"].every((c) => sent(s.fx.tg).at(-1)!.includes(c)));
 });

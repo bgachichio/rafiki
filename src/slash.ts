@@ -19,6 +19,7 @@ import { setOwnFocus } from "./focus.ts";
 import { connectHub, emailCommand, inboxCommand } from "./connections.ts";
 import { codeCommand } from "./bridge.ts";
 import { notesCommand } from "./notes.ts";
+import { abilitiesText, handsCommand } from "./hands.ts";
 import { startSequence } from "./cards.ts";
 import { importsList, memoryHome, modelCommand, prefsHome, skillCommand, skillsHome, undoCommand } from "./ui.ts";
 import { buildBrief, isPaused } from "./schedule.ts";
@@ -33,7 +34,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /one /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /inbox /email /code /notes /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /one /today /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /inbox /email /code /notes /hands /abilities /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 export async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -191,6 +192,8 @@ async function calendarCommand(ctx: Ctx, tg: Telegram, chatId: number, cmd: stri
     case "/email": await emailCommand(ctx, tg, chatId, args); return true;
     case "/code": await codeCommand(ctx, tg, chatId, args); return true;
     case "/notes": await notesCommand(ctx, tg, chatId, args); return true;
+    case "/hands": await handsCommand(ctx, tg, chatId, args); return true;
+    case "/abilities": case "/cando": await tg.send(chatId, await abilitiesText(ctx)); return true;
     case "/disconnect": { await disconnect(ctx, tg, chatId); return true; }
     default: return false;
   }

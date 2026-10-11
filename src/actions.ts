@@ -16,7 +16,8 @@ export type Action =
   | { type: "set_setting"; key: "brief_time" | "quiet_start" | "quiet_end"; value: string }
   | { type: "poll"; question: string; options: string[] }
   | { type: "react"; emoji: string }
-  | { type: "calendar_link"; title: string; startMs: number; endMs: number; location: string | null };
+  | { type: "calendar_link"; title: string; startMs: number; endMs: number; location: string | null }
+  | { type: "zap"; tool: string; goal: string };
 
 export interface ActionIO { attach?: { kind: string; fileId: string; name: string }; calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
 const REACTIONS = ["👍", "❤", "🔥", "🙏", "🎉", "👀"];
@@ -80,6 +81,12 @@ export function validateActions(raw: unknown, now: number, off: number): Action[
         const end = typeof o.end === "string" ? parseLocalIso(o.end, off) : null;
         if (!title || start === null || start < now - 60000) break;
         out.push({ type, title, startMs: start, endMs: end !== null && end > start ? end : start + 3600000, location: str(o.location, 100) });
+        break;
+      }
+      case "zap": {
+        const tool = str(o.tool, 120);
+        const goal = str(o.goal, 1500);
+        if (tool && goal && /^[\w.-]+$/.test(tool)) out.push({ type, tool, goal });
         break;
       }
       case "react": {
