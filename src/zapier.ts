@@ -195,6 +195,15 @@ async function countUse(ctx: Ctx): Promise<number> {
   await setSetting(ctx.db, "zap_used", `${month}|${used}`);
   return used;
 }
+/** Rafiki's share of the owner's Zapier tasks (Brian's decision, 2026-10-11: 80 of 100 a month). Each action costs 2 tasks.
+ *  Set zap_budget (in tasks) to change it. Warns at three quarters, stops at the budget. */
+export async function budget(ctx: Ctx): Promise<{ used: number; max: number; warnAt: number }> {
+  const tasks = Number(await getSetting(ctx.db, "zap_budget")) || 80;
+  const max = Math.floor(tasks / 2);
+  return { used: await usedThisMonth(ctx), max, warnAt: Math.floor(max * 0.75) };
+}
+const OVER = (max: number): string => `I've used my Zapier budget for this month (${max} actions, ${max * 2} tasks), so I've stopped using your apps until the 1st. You can do this in the app directly, or raise my budget with /hands budget <tasks>.`;
+
 export async function usedThisMonth(ctx: Ctx): Promise<number> {
   const month = fmtDateTime(ctx.now, ctx.off).split(" ")[1]!.slice(3);
   const [m, n] = ((await getSetting(ctx.db, "zap_used")) ?? "").split("|");
@@ -211,6 +220,8 @@ export async function proposeZap(ctx: Ctx, tool: string, goal: string, said: str
   let mcp: Mcp | null;
   try { mcp = await client(ctx); } catch (e) { return { text: e instanceof ZapAuthError ? "Zapier refused my connection token. Make a new one and send /hands to reconnect." : "I couldn't reach Zapier just now." }; }
   if (!mcp) return { text: "My hands aren't connected yet. /hands sets them up in about three minutes." };
+  const b = await budget(ctx);
+  if (b.used >= b.max) return { text: OVER(b.max) };
   const f = await fill(ctx, a, await fieldsOf(mcp, cat, a), goal, said);
   if (f.missing.length) return { text: `To ${f.summary.replace(/^[A-Z]/, (c) => c.toLowerCase())}, I still need: ${f.missing.join(", ")}.` };
   if (!a.write) {
@@ -233,13 +244,15 @@ export async function zapCallback(ctx: Ctx, tg: { send(c: number, t: string, b?:
   if (ctx.now - p.ts > 30 * 60000) { await tg.send(chatId, "That was more than 30 minutes ago, so I didn't do it. Ask me again."); return true; }
   const cat = await loadCatalogue(ctx);
   const a = cat?.actions.find((x) => x.tool === p.tool);
+  const b = await budget(ctx);
+  if (b.used >= b.max) { await tg.send(chatId, OVER(b.max)); return true; }
   const mcp = await client(ctx).catch(() => null);
   if (!cat || !a || !mcp) { await tg.send(chatId, "I couldn't reach Zapier, so nothing was done."); return true; }
   try {
     const out = await run(mcp, cat, a, p.params);
     const n = await countUse(ctx);
     const link = /https?:\/\/[^\s"'<>\\]+/.exec(out)?.[0];
-    await tg.send(chatId, `Done: ${p.summary}${n >= 40 ? `\n(${n} Zapier actions this month; the free plan allows about 50.)` : ""}`, link ? [[{ text: "Open it", data: "x", url: link }]] : undefined);
+    await tg.send(chatId, `Done: ${p.summary}${n >= b.warnAt ? `\n(${n} of my ${b.max} Zapier actions used this month.)` : ""}`, link ? [[{ text: "Open it", data: "x", url: link }]] : undefined);
   } catch (e) {
     await tg.send(chatId, `${a.app} did not do it: ${e instanceof Error ? e.message.slice(0, 200) : "error"}. Nothing else was changed.`);
   }

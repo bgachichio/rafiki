@@ -144,3 +144,18 @@ test("hands: a missing address is asked for, not invented; text from outside can
   assert.ok(!s.z.calls.some((c) => c.name === "execute_zapier_write_action"));
   assert.equal(s.db.raw.prepare("SELECT value FROM settings WHERE key = 'zap_pending'").get() === undefined || (s.db.raw.prepare("SELECT value FROM settings WHERE key = 'zap_pending'").get() as { value: string }).value === "", true, "no card from outside text");
 });
+
+test("hands: Rafiki's Zapier budget (80 of 100 tasks, 40 actions) stops it, and /hands budget changes it", async () => {
+  const s = setup([agentJson({ reply: "OK.", actions: [{ type: "zap", tool: "gmail_find_email", goal: "find Jane's email" }] })]);
+  await owned(s);
+  const { saveToken, syncCatalogue } = await import("../src/zapier.ts");
+  const ctx = { db: s.db, env: ENV, f: s.deps.f, now: T0, off: 180 } as never;
+  await saveToken(ctx, TOKEN);
+  await syncCatalogue(ctx);
+  await s.db.prepare("INSERT INTO settings (key, value) VALUES ('zap_used', '11-2026|40')").bind().run();
+  await handleUpdate(s.deps, msg("find Jane's latest email"));
+  assert.match(sent(s.base.tg).pop()!, /used my Zapier budget for this month \(40 actions, 80 tasks\)/);
+  assert.ok(!s.z.calls.some((c) => c.name === "execute_zapier_read_action"));
+  await handleUpdate(s.deps, msg("/hands budget 100"));
+  assert.match(sent(s.base.tg).pop()!, /100 tasks a month \(50 actions\)\. I warn you at 37 and stop at 50/);
+});

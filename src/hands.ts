@@ -7,18 +7,20 @@ import { googleConfigured } from "./google.ts";
 import { notesConfigured, type NotesEnv } from "./notes.ts";
 import type { BridgeEnv } from "./bridge.ts";
 import type { Button, Telegram } from "./telegram.ts";
-import { dropHands, loadCatalogue, saveToken, syncCatalogue, usedThisMonth, zapToken, ZapAuthError, type Catalogue } from "./zapier.ts";
+import { budget, dropHands, loadCatalogue, saveToken, syncCatalogue, zapToken, ZapAuthError, type Catalogue } from "./zapier.ts";
 
 export const HANDS_HELP = `Hands let me act in your other apps (Gmail, Google Docs, Sheets, Tasks, Zoom, GitHub and thousands more) through Zapier. Zapier keeps your app logins; I only ever hold one connection token, and I never change anything without your tap.
 
 About three minutes:
-1. Open mcp.zapier.com and sign in (free plan is fine: about 50 actions a month).
+1. Open mcp.zapier.com and sign in. The free plan gives 100 tasks a month; I use at most 80 of them (40 actions) and stop there.
 2. Add the apps you want me to use, and their actions. Start with finding and drafting; add sending later if you like.
 3. Open Connect, choose "Other", generate a connection token and copy it.
 4. Paste it here as your next message. I store it encrypted and delete your message.`;
 
 export async function handsCommand(ctx: Ctx, tg: Telegram, chatId: number, args: string): Promise<void> {
   const a = args.trim();
+  const bm = /^budget\s+(\d{1,4})$/i.exec(a);
+  if (bm) { await setSetting(ctx.db, "zap_budget", bm[1]!); const b = await budget(ctx); await tg.send(chatId, `My Zapier budget is now ${b.max * 2} tasks a month (${b.max} actions). I warn you at ${b.warnAt} and stop at ${b.max}.`); return; }
   if (/^(off|disconnect|remove)$/i.test(a)) { await dropHands(ctx); await tg.send(chatId, "Hands disconnected. I deleted the token. Revoke it in Zapier too: mcp.zapier.com, Connect, rotate."); return; }
   if (a && !/^(sync|refresh)$/i.test(a)) { await takeToken(ctx, tg, chatId, a); return; }
   if (!(await zapToken(ctx))) {
@@ -28,7 +30,8 @@ export async function handsCommand(ctx: Ctx, tg: Telegram, chatId: number, args:
   }
   try {
     const cat = /^(sync|refresh)$/i.test(a) || !(await loadCatalogue(ctx)) ? await syncCatalogue(ctx) : (await loadCatalogue(ctx))!;
-    await tg.send(chatId, `${handsSummary(cat)}\n\nZapier actions used this month: ${await usedThisMonth(ctx)}. /hands sync after you add apps in Zapier; /hands off disconnects.`);
+    const b = await budget(ctx);
+    await tg.send(chatId, `${handsSummary(cat)}\n\nZapier actions used this month: ${b.used} of ${b.max} (${b.max * 2} tasks). /hands sync after you add apps in Zapier; /hands budget <tasks> changes my share; /hands off disconnects.`);
   } catch (e) {
     await tg.send(chatId, e instanceof ZapAuthError ? "Zapier refused my token. Generate a new one (mcp.zapier.com, Connect, Other) and send /hands <token>." : "I couldn't reach Zapier just now. Try /hands again in a minute.");
   }
@@ -118,7 +121,7 @@ export async function abilitiesText(ctx: Ctx): Promise<string> {
   const env = ctx.env as unknown as BridgeEnv;
   if (env.CLAUDE_ROUTINE_ID && env.CLAUDE_ROUTINE_TOKEN) can.push("Hand a coding task to Claude Code after you confirm");
   const lines = ["What your Rafiki can do, as set up today:", ...can.map((c) => `✓ ${c}`)];
-  if (cat) lines.push("", handsSummary(cat), `Zapier actions used this month: ${await usedThisMonth(ctx)} (free plan: about 50).`);
+  if (cat) { const b = await budget(ctx); lines.push("", handsSummary(cat), `Zapier actions used this month: ${b.used} of ${b.max}.`); }
   const cannot = [
     "Send, post, change or create anything in another app without your tap" + (cat ? "" : " (and without hands it cannot act in other apps at all)"),
     "Delete anything in your apps, or move or spend money",
