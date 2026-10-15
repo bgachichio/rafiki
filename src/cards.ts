@@ -57,7 +57,9 @@ async function finish(ctx: Ctx, tg: Telegram, chatId: number, d: { row: Row; spe
 async function afterCard(ctx: Ctx, tg: Telegram, chatId: number, seq: boolean): Promise<void> {
   if (!seq) return;
   const rest = JSON.parse((await getSetting(ctx.db, "dc_seq")) || "[]") as string[];
-  const next = rest.shift();
+  let next = rest.shift();
+  // Skin tone only matters when emoji are on.
+  if (next === "emoji.skin" && ((await loadPrefs(ctx.db))["emoji.level"] ?? "none") === "none") next = rest.shift();
   await setSetting(ctx.db, "dc_seq", JSON.stringify(rest));
   if (next) await askDecision(ctx, tg, chatId, next, { seq: true });
   else await endSequence(ctx, tg, chatId);

@@ -11,12 +11,20 @@ export const PREF_LABELS: Record<string, string> = {
   day_end: "Your day ends",
   work_days: "Work days",
   voice_card: "Your writing voice",
+  "emoji.level": "Emoji",
 };
 export const STYLE_TEXT: Record<string, string> = {
   brief: "Keep replies very short: two to four lines.",
   direct: "Be direct: lead with the answer, no hedging, no padding.",
   warm: "Be warm and encouraging, while staying concise.",
   detailed: "Be thorough and structured, showing the reasoning.",
+};
+
+export const EMOJI_TEXT: Record<string, string> = {
+  none: "Use no emoji.",
+  few: "Use at most one emoji in a reply, and only where it adds warmth.",
+  balanced: "Use a few emoji where they help the tone: one or two in a short reply, up to three in a long one.",
+  lots: "Use emoji freely to keep the tone light and lively, without replacing words.",
 };
 
 export async function loadPrefs(db: Db): Promise<Record<string, string>> {
@@ -38,5 +46,6 @@ export function prefsLines(p: Record<string, string>): string[] {
   if (p.lang) out.push(`LANGUAGES: the owner writes in ${p.lang}. Reply in the language they write in.`);
   const style = [p.style ? STYLE_TEXT[p.style] ?? p.style : "", p.style_note ?? "", p.voice_card ? `When drafting for them, write in their voice: ${p.voice_card}` : ""].filter(Boolean).join(" ");
   if (style) out.push(`HOW TO TALK TO THE OWNER: ${style}`);
+  if (p["emoji.level"]) out.push(`EMOJI: ${EMOJI_TEXT[p["emoji.level"]] ?? EMOJI_TEXT.none}`);
   return out;
 }

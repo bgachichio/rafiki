@@ -41,7 +41,22 @@ export const MENU = {
   is_persistent: true,
 };
 
+/** Rafiki never sends an em dash: "a — b" becomes "a, b". En dashes in ranges (09:00–10:00) stay. */
+export const noEmDash = (t: string): string => t.replace(/\s*—\s*/g, ", ").replace(/,\s*,/g, ",");
+export const SKIN: Record<string, string> = { light: "\u{1F3FB}", "medium-light": "\u{1F3FC}", medium: "\u{1F3FD}", "medium-dark": "\u{1F3FE}", dark: "\u{1F3FF}" };
+/** Give people and hand emoji the owner's skin tone, unless they already carry one. */
+export const withSkin = (t: string, tone: string | null): string => {
+  const mod = tone ? SKIN[tone] : undefined;
+  return mod ? t.replace(/(\p{Emoji_Modifier_Base})(?![\u{1F3FB}-\u{1F3FF}])(\uFE0F)?/gu, (_m, base: string) => `${base}${mod}`) : t;
+};
+
 export class Telegram {
+  /** Set per update: how to read the owner's emoji skin tone (read only when a message carries such an emoji). */
+  skin?: () => Promise<string | null>;
+  private async tidy(t: string): Promise<string> {
+    const out = noEmDash(t);
+    return this.skin && /\p{Emoji_Modifier_Base}/u.test(out) ? withSkin(out, await this.skin()) : out;
+  }
   private token: string;
   private f: Fetch;
   constructor(token: string, f: Fetch) {
@@ -61,10 +76,12 @@ export class Telegram {
     return out;
   }
 
-  send(chatId: number, text: string, buttons?: Button[][], keyboard = false): Promise<unknown> {
-    const body: Record<string, unknown> = { chat_id: chatId, text: text.slice(0, 3900), link_preview_options: { is_disabled: true } }; // no big link cards from maps or X links
+  async send(chatId: number, text: string, buttons?: Button[][], keyboard = false): Promise<unknown> {
+    const body: Record<string, unknown> = { chat_id: chatId, text: (await this.tidy(text)).slice(0, 3900), link_preview_options: { is_disabled: true } }; // no big link cards from maps or X links
     if (buttons && buttons.length) {
-      body.reply_markup = { inline_keyboard: buttons.map((row) => row.map((b) => (b.copy ? { text: b.text, copy_text: { text: b.copy } } : b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data.slice(0, 64) }))) };
+      const label = async (t: string): Promise<string> => this.tidy(t);
+      const rows = await Promise.all(buttons.map((row) => Promise.all(row.map(async (b) => ({ ...b, text: await label(b.text) })))));
+      body.reply_markup = { inline_keyboard: rows.map((row) => row.map((b) => (b.copy ? { text: b.text, copy_text: { text: b.copy } } : b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data.slice(0, 64) }))) };
     } else if (keyboard) {
       body.reply_markup = MENU;
     }
@@ -74,7 +91,7 @@ export class Telegram {
   async sendStored(chatId: number, a: Attach, caption?: string, buttons?: Button[][]): Promise<boolean> {
     const method = { document: "sendDocument", photo: "sendPhoto", voice: "sendVoice", audio: "sendAudio", video: "sendVideo" }[a.kind];
     const markup = buttons?.length ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data.slice(0, 64) }))) } } : {};
-    const r = (await this.call(method, { chat_id: chatId, [a.kind]: a.fileId, ...(caption ? { caption: caption.slice(0, 1000) } : {}), ...markup })) as { ok?: boolean };
+    const r = (await this.call(method, { chat_id: chatId, [a.kind]: a.fileId, ...(caption ? { caption: (await this.tidy(caption)).slice(0, 1000) } : {}), ...markup })) as { ok?: boolean };
     return r.ok === true;
   }
   /** Resolve a file id, then download it. Returns null on any failure. */

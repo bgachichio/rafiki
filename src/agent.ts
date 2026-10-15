@@ -244,7 +244,22 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
   if (text) await addMessage(db, now, "user", store ?? text);
   await addMessage(db, now, "assistant", out.text);
   await logRun(db, { now, role: roleKey, model, sens, pref, tin, tout, cost, ms: Date.now() - started, status, trace: { ...traceExtra, prompt_version: PROMPT_VERSION, role: roleKey, sens, deep, model, provider_pref: pref, actions: done, recalled: hits.length, skills: skillHits.map((h) => h.name), day: fmtDate(now, off) } });
+  if (cost > 0) await costAlert(ctx, spent + cost, cap); // no extra queries unless a threshold is crossed
   return out;
+}
+
+/** Cost stays quiet: one alert when today's model budget is 60% used, one at 90%, one when it is used up. Never a daily line. */
+export async function costAlert(ctx: Ctx, spent: number, cap: number): Promise<void> {
+  if (!ctx.tg || !ctx.chatId) return;
+  const level = spent >= cap ? 100 : spent >= cap * 0.9 ? 90 : spent >= cap * 0.6 ? 60 : 0;
+  if (!level) return;
+  const day = fmtDate(ctx.now, ctx.off);
+  const [d, l] = ((await getSetting(ctx.db, "cost_alert")) ?? "").split("|");
+  if (d === day && Number(l) >= level) return;
+  await ctx.db.prepare("INSERT INTO settings (key, value) VALUES ('cost_alert', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(`${day}|${level}`).run();
+  await ctx.tg.send(ctx.chatId, level === 100
+    ? `Today's model budget (USD ${cap.toFixed(2)}) is used up, so I'll stop thinking until midnight. Reminders and logging still work. /cap raises it.`
+    : `Heads up: ${level}% of today's model budget is used (USD ${spent.toFixed(2)} of ${cap.toFixed(2)}). /cap changes it.`);
 }
 
 export interface RunLog { now: number; role: string; model: string; sens: string; pref: string; tin: number; tout: number; cost: number; ms: number; status: string; trace: Record<string, unknown> }

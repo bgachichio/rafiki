@@ -109,8 +109,21 @@ export const SPECS: Record<string, Spec> = {
   },
 };
 
-/** The order of the "how I work" walk-through. */
-export const SEQ = ["call_me", "remind.mode", "remind.event_leads", "remind.morning", "style", "brief_time", "quiet", "nudges.max", "lang"];
+SPECS["emoji.level"] = {
+  key: "emoji.level", label: "Emoji", question: "How much emoji would you like in my replies?", noCustom: true, hint: "",
+  options: () => [{ id: "none", label: "None" }, { id: "few", label: "A few" }, { id: "balanced", label: "Balanced" }, { id: "lots", label: "A lot" }],
+  effective: pref("emoji.level", "none"), show: (v) => ({ none: "none", few: "a few", balanced: "balanced", lots: "a lot" })[v] ?? v, apply: write("emoji.level"),
+};
+SPECS["emoji.skin"] = {
+  key: "emoji.skin", label: "Emoji skin tone", question: "Which skin tone should my emoji use for people and hands?", noCustom: true, hint: "",
+  options: () => [{ id: "default", label: "👍 Default" }, { id: "light", label: "👍🏻" }, { id: "medium-light", label: "👍🏼" }, { id: "medium", label: "👍🏽" }, { id: "medium-dark", label: "👍🏾" }, { id: "dark", label: "👍🏿" }],
+  effective: async (ctx) => (await getSetting(ctx.db, "emoji_skin")) || "default",
+  show: (v) => (v === "default" ? "default (yellow)" : v),
+  apply: async (ctx, v) => { await setSetting(ctx.db, "emoji_skin", v === "default" ? "" : v); await setPolicyKey(ctx.db, ctx.now, "setting.emoji.skin", v, "confirmed"); },
+};
+
+/** The order of the "how I work" walk-through. Skin tone follows emoji, and only when emoji are on. */
+export const SEQ = ["call_me", "remind.mode", "remind.event_leads", "remind.morning", "style", "emoji.level", "emoji.skin", "brief_time", "quiet", "nudges.max", "lang"];
 
 const modelSpec = (kind: ModelKind, label: string, question: string): Spec => ({
   key: `model.${kind}`, label, question,

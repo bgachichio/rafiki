@@ -72,3 +72,15 @@ test("week score: Ones done out of Ones set, as a bar, for the Monday check", as
   for (const [ago, st] of [[1, "done"], [2, "done"], [3, "open"], [4, "done"]] as const) await day(s.db, ago, st);
   assert.match((await weekScore(s.db, T0, 180))!, /^Last week: 3 of 4 Ones done ▓▓▓░/);
 });
+
+test("the One: Drop it drops the thing itself, so an overdue reminder is not picked again the next morning", async () => {
+  const s = setup();
+  await s.db.prepare("INSERT INTO reminders (ts, text, due_ts, state) VALUES (?, 'Review 250K goal progress', ?, 'flagged')").bind(T0, T0 - DAY).run();
+  await s.db.prepare("INSERT INTO tasks (ts, text) VALUES (?, 'Draft the proposal')").bind(T0).run();
+  assert.equal((await ensureToday(s.db, T0, 180))!.text, "Overdue, still open: Review 250K goal progress");
+  await focusCallback(s.ctx(T0 + 10 * 3600000), s.tg, OWNER, "f:drop");
+  assert.match(sent(s.fx.tg).pop()!, /^Dropped for good: Review 250K goal progress\. It won't come back as your One\./);
+  assert.equal((s.db.raw.prepare("SELECT state FROM reminders").get() as { state: string }).state, "dropped");
+  assert.equal((await ensureToday(s.db, T0 + DAY, 180))!.text, "Draft the proposal", "tomorrow's One is something else");
+  assert.ok(s.db.raw.prepare("SELECT 1 FROM signals WHERE kind = 'one_dropped'").get(), "the drop is remembered as a signal");
+});

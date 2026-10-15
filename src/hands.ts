@@ -68,7 +68,7 @@ export function handsSummary(cat: Catalogue): string {
 
 // ---- the end of onboarding ---------------------------------------------------------------------------------------------
 const STEPS: [string, string, string][] = [
-  ["ob_cards", "Calibrate how I work (nine taps)", "dc:seq"],
+  ["ob_cards", "Calibrate how I work (ten taps)", "dc:seq"],
   ["ob_media", "Test my ears and eyes (voice, photo, file, location)", "mc:start"],
   ["ob_connect", "Connect your world: calendar, mail and hands", "hd:connect"],
 ];

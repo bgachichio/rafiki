@@ -234,7 +234,7 @@ test("brief: sent once a day at the chosen time, inside a one-hour window, with 
   const brief = sent(s.fx.tg).find((t) => /^Morning\./.test(t))!;
   assert.ok(brief.split("\n").length <= 8);
   assert.match(brief, /Draft the Otieno nudge/);
-  assert.match(brief, /Rafiki cost yesterday/);
+  assert.doesNotMatch(brief, /cost|USD/, "no daily cost line: cost speaks only at 60%, 90% and used up")
   assert.equal(await maybeBrief(s.ctx(T0 + 24 * 3600000 + 90 * 60000), s.tg, OWNER), false, "outside the window");
 });
 

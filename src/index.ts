@@ -1,7 +1,7 @@
 // Worker entry: Telegram webhook, health check, and the 5-minute cron for reminders, the brief and the Monday check.
 import { withModelOverrides, type Ctx } from "./agent.ts";
 import { getSetting } from "./db.ts";
-import { handleUpdate, offsetOf, type Env } from "./handler.ts";
+import { handleUpdate, offsetOf, skinReader, type Env } from "./handler.ts";
 import { runJobs } from "./jobs.ts";
 import { ensureSchema, handleSetup, timingSafeEqual, webhookSecret } from "./setup.ts";
 import { handleGoogleCallback } from "./oauth.ts";
@@ -67,6 +67,7 @@ export default {
       if (!owner) return;
       const c: Ctx = { db: env.DB, env, f: netFetch, now: Date.now(), off: offsetOf(env) };
       const tg = new Telegram(env.TELEGRAM_BOT_TOKEN, netFetch);
+      tg.skin = skinReader(env.DB);
       await runJobs(c, tg, Number(owner));
     })().catch(() => undefined));
   },

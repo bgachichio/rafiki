@@ -258,10 +258,17 @@ export async function handleNonText(ctx: Ctx, tg: Telegram, chatId: number, m: T
   return "ignored";
 }
 
+/** The owner's emoji skin tone, read once per update and only if a message carries such an emoji. */
+export function skinReader(db: Db): () => Promise<string | null> {
+  let v: Promise<string | null> | null = null;
+  return () => (v ??= getSetting(db, "emoji_skin").then((x) => x || null).catch(() => null));
+}
+
 /** Returns a short reason string for tests and logs. */
 export async function handleUpdate(d: Deps, u: TgUpdate): Promise<string> {
   if (!(await markSeen(d.db, u.update_id, d.now))) return "duplicate";
   const tg = new Telegram(d.env.TELEGRAM_BOT_TOKEN, d.f);
+  tg.skin = skinReader(d.db);
   const ctx: Ctx = { db: d.db, env: d.env, f: d.f, now: d.now, off: offsetOf(d.env), tg };
   ctx.env = await withModelOverrides(d.db, d.env);
   if (!ctx.env.PUBLIC_URL) ctx.env = { ...ctx.env, PUBLIC_URL: (await getSetting(d.db, "public_url")) ?? "" };

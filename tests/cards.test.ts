@@ -37,7 +37,7 @@ const pol = async (s: S) => (await loadPolicy(s.db));
 test("cards: a preset tap applies the choice, marks it confirmed and stores what was offered", async () => {
   const s = await setup();
   await handleUpdate(s.deps, msg("/rules"));
-  assert.ok(sent(s.fx.tg).some((t) => t.startsWith("9 quick questions")));
+  assert.ok(sent(s.fx.tg).some((t) => t.startsWith("11 quick questions")));
   // first card is "what to call you" with the Telegram name as the only preset
   assert.match(String(lastMsg(s).body.text), /What should I call you\?/);
   await handleUpdate(s.deps, tap(`dc:${cardId(s)}:0`));

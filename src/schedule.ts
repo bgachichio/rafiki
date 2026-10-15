@@ -88,10 +88,7 @@ export async function buildBrief(ctx: Ctx): Promise<string> {
   if (y && Number(y.a) > 0) lines.push(`Spent yesterday: ${kes(Number(y.a))} (fees ${kes(Number(y.f))})`);
   const inbox = await inboxLine(ctx);
   if (inbox) lines.push(inbox);
-  const left = await creditLeft(ctx.env, ctx.f);
-  if (left !== null && left < 2) lines.push(`Model credit is low: USD ${left.toFixed(2)} left. Top up at openrouter.ai/settings/credits so I can keep thinking.`);
-  const spentModel = await dailyCost(db, dayStart - 1, off);
-  lines.push(`Rafiki cost yesterday: USD ${spentModel.toFixed(2)} of USD ${(await capUsd(ctx)).toFixed(2)} a day`);
+
   return lines.slice(0, 10).join("\n");
 }
 
@@ -106,7 +103,20 @@ export async function maybeBrief(ctx: Ctx, tg: Telegram, chatId: number): Promis
   const brief = await buildBrief(ctx); // picks today's One if there is none yet
   await tg.send(chatId, brief, [...((await todays(ctx.db, ctx.now, ctx.off)) ? [FOCUS_BUTTONS] : []), [{ text: "Plan my day", data: "say:Plan my day" }], feedbackRow("brief")]);
   await logOut(ctx, "brief", false);
+  await creditAlert(ctx, tg, chatId);
   return true;
+}
+
+/** OpenRouter balance: said once when it drops below USD 2, once when it runs out, and again only after a top-up. */
+export async function creditAlert(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
+  const left = await creditLeft(ctx.env, ctx.f);
+  if (left === null) return;
+  const stage = left < 0.05 ? "out" : left < 2 ? "low" : "ok";
+  const was = (await getSetting(ctx.db, "credit_alert")) ?? "ok";
+  if (stage === was) return;
+  await setSetting(ctx.db, "credit_alert", stage);
+  if (stage === "low") await tg.send(chatId, `Model credit is getting low: USD ${left.toFixed(2)} left on OpenRouter. Top up at openrouter.ai/settings/credits when convenient.`);
+  if (stage === "out") await tg.send(chatId, "Model credit has run out on OpenRouter, so I can only do simple things. Top up at openrouter.ai/settings/credits.");
 }
 
 export async function maybeMonday(ctx: Ctx, tg: Telegram, chatId: number): Promise<boolean> {

@@ -4,6 +4,7 @@
 import type { Ctx } from "./agent.ts";
 import { canNudge, isPaused, logOut } from "./budget.ts";
 import { getSetting, setSetting, type Db } from "./db.ts";
+import { recordSignal } from "./policy.ts";
 import type { Button, Telegram } from "./telegram.ts";
 import { fmtDate, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
 
@@ -23,8 +24,10 @@ export async function candidates(db: Db, now: number, off: number): Promise<Cand
   for (const t of tasks.results) out.push({ text: t.text, ref: `t:${t.id}` });
   const goal = await db.prepare("SELECT id, text FROM goals WHERE state = 'open' ORDER BY id LIMIT 1").bind().first<{ id: number; text: string }>();
   if (goal) out.push({ text: `One step on: ${goal.text}`, ref: `g:${goal.id}` });
+  // Anything the owner dropped as the One in the last 30 days is not offered again, whatever list it still sits on.
+  const dropped = new Set((await db.prepare("SELECT text, ref FROM focus WHERE state = 'dropped' AND ts >= ?").bind(now - 30 * DAY).all<{ text: string; ref: string | null }>()).results.flatMap((r) => [r.text, r.ref ?? ""]).filter(Boolean));
   const seen = new Set<string>();
-  return out.filter((c) => (seen.has(c.text) ? false : (seen.add(c.text), true)));
+  return out.filter((c) => !dropped.has(c.text) && !dropped.has(c.ref) && (seen.has(c.text) ? false : (seen.add(c.text), true)));
 }
 
 export interface Focus { day: string; text: string; ref: string | null; state: string }
@@ -70,10 +73,10 @@ export async function focusLines(db: Db, now: number, off: number): Promise<stri
 export const FOCUS_BUTTONS: Button[] = [{ text: "One done", data: "f:done" }, { text: "Swap it", data: "f:swap" }];
 
 /** Close the underlying reminder or task too, so nothing chases what is already finished. */
-async function closeRef(db: Db, ref: string | null): Promise<void> {
+async function closeRef(db: Db, ref: string | null, state: "done" | "dropped" = "done"): Promise<void> {
   const m = /^([rt]):(\d+)$/.exec(ref ?? "");
   if (!m) return;
-  await db.prepare(m[1] === "r" ? "UPDATE reminders SET state = 'done' WHERE id = ?" : "UPDATE tasks SET state = 'done' WHERE id = ?").bind(Number(m[2])).run();
+  await db.prepare(m[1] === "r" ? "UPDATE reminders SET state = ? WHERE id = ?" : "UPDATE tasks SET state = ? WHERE id = ?").bind(state, Number(m[2])).run();
 }
 
 export async function focusCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
@@ -112,8 +115,11 @@ export async function focusCallback(ctx: Ctx, tg: Telegram, chatId: number, data
     return true;
   }
   if (data === "f:drop") {
+    // Dropping the One drops the thing itself: the reminder or task behind it is closed, so it cannot come back tomorrow.
     await db.prepare("UPDATE focus SET state = 'dropped' WHERE day = ?").bind(key).run();
-    await tg.send(chatId, "Dropped. Not everything deserves doing; that was a decision, not a failure.");
+    await closeRef(db, f.ref, "dropped");
+    await recordSignal(db, now, "one_dropped", f.ref ?? f.text.slice(0, 80));
+    await tg.send(chatId, `Dropped for good: ${f.text.replace(/^Overdue, still open: /, "")}. It won't come back as your One. Not everything deserves doing; that was a decision, not a failure.`);
     return true;
   }
   return false;

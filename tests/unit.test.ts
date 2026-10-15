@@ -225,3 +225,36 @@ test("agent JSON: a reply cut off by the token ceiling keeps the text that arriv
   const p = parseAgentJson('{"role":"advisor","reply":"Big idea: bookmarks.\\n\\nWhat matters:\\n1. It keeps a bookmark.\\n2');
   assert.match(p.reply, /^Big idea: bookmarks\.\n\nWhat matters:\n1\. It keeps a bookmark\.\n2\.\.\.\n\(I was cut short/);
 });
+
+test("style: no em dash ever leaves Rafiki; people and hand emoji take the owner's skin tone", async () => {
+  const { noEmDash, withSkin, Telegram } = await import("../src/telegram.ts");
+  assert.equal(noEmDash("Big idea — keep it short—always."), "Big idea, keep it short, always.");
+  assert.equal(noEmDash("09:00–10:00"), "09:00–10:00", "en dashes in ranges stay");
+  assert.equal(withSkin("Nice 👍 and 👋🏿 and 🎉", "medium-dark"), "Nice 👍🏾 and 👋🏿 and 🎉");
+  assert.equal(withSkin("👍", null), "👍");
+  const calls: Record<string, unknown>[] = [];
+  const tg = new Telegram("t", (async (_u: string, i: RequestInit) => { calls.push(JSON.parse(String(i.body))); return Response.json({ ok: true }); }) as never);
+  tg.skin = async () => "light";
+  await tg.send(1, "Done — 👍", [[{ text: "👍", data: "fb:u" }]]);
+  assert.equal(calls[0]!.text, "Done, 👍🏻");
+  assert.equal((calls[0]!.reply_markup as { inline_keyboard: { text: string }[][] }).inline_keyboard[0]![0]!.text, "👍🏻");
+});
+
+test("emoji: the owner's level reaches the model; none by default", async () => {
+  const { prefsLines } = await import("../src/prefs.ts");
+  assert.ok(prefsLines({ "emoji.level": "few" }).includes("EMOJI: Use at most one emoji in a reply, and only where it adds warmth."));
+  assert.ok(!prefsLines({}).some((l) => l.startsWith("EMOJI")));
+});
+
+test("cost: quiet until 60%, then one alert each at 60%, 90% and used up, once a day", async () => {
+  const { costAlert } = await import("../src/agent.ts");
+  const { makeDb, fakeFetch, ENV, sent } = await import("./shim.ts");
+  const { Telegram } = await import("../src/telegram.ts");
+  const db = makeDb(); const fx = fakeFetch([]);
+  const ctx = { db, env: ENV, f: fx.f, now: Date.UTC(2026, 10, 3, 9), off: 180, tg: new Telegram("t", fx.f), chatId: 1 } as never;
+  await costAlert(ctx, 0.5, 1); assert.equal(sent(fx.tg).length, 0);
+  await costAlert(ctx, 0.61, 1); await costAlert(ctx, 0.7, 1);
+  assert.equal(sent(fx.tg).length, 1); assert.match(sent(fx.tg)[0]!, /60% of today's model budget/);
+  await costAlert(ctx, 0.95, 1); await costAlert(ctx, 1.01, 1); await costAlert(ctx, 1.2, 1);
+  assert.equal(sent(fx.tg).length, 3); assert.match(sent(fx.tg)[2]!, /used up/);
+});
