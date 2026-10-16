@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { executeActions, validateActions } from "../src/actions.ts";
-import { buildContext, type Ctx } from "../src/agent.ts";
+import { buildContext, parseAgentJson, type Ctx } from "../src/agent.ts";
 import { candidates, ensureToday, focusCallback } from "../src/focus.ts";
 import { closeMatching, dmyKey, isLapsed } from "../src/lifecycle.ts";
 import { goalsPanel, maybeGoalReview, panelCallback, staleNudge, tasksPanel } from "../src/panels.ts";
@@ -180,4 +180,62 @@ test("the model is told what is stale: a lapsed goal and a parked task are marke
   assert.match(c, /Make 250K KES by 06-10-2026 \[DATE PASSED: not a live priority/);
   assert.match(c, /Old thing \[9 days old, parked: not a priority\]/);
   assert.match(c, /Fresh thing(?! \[)/);
+});
+
+// ---- 2026-10-16 live defects: raw JSON sent as the reply, and closed items returning through memory ----
+
+
+const LEAK = `A birthday dessert: a slice of dark tart. It looks like a lovely moment.
+
+Separately, invoice 114 from Acme Supplies (KES 48,000) falls due today.
+
+{"role":"chief_of_staff","reply":"A birthday dessert: a slice of dark tart.\\n\\nIt is not a receipt, so I have logged nothing.","actions":[{"type":"react","emoji":"🎉"}],"buttons":[["Log the bill","Log a spend for the birthday dinner"]]}
+
+Correction: the block above has stray formatting. Here is the single clean reply:
+
+{"role":"chief_of_staff","reply":"A birthday dessert: a slice of dark tart.\\n\\nIt is not a receipt, so I have logged nothing.","actions":[{"type":"react","emoji":"🎉"}],"buttons":[["Log the bill","Log a spend for the birthday dinner"]]}`;
+
+test("a reply sent twice with a 'Correction' line still parses: the owner gets the reply text, never raw JSON", () => {
+  const p = parseAgentJson(LEAK);
+  assert.equal(p.reply, "A birthday dessert: a slice of dark tart.\n\nIt is not a receipt, so I have logged nothing.");
+  assert.ok(!p.reply.includes("{") && !p.reply.includes("Correction"));
+  assert.deepEqual(p.buttons, [["Log the bill", "Log a spend for the birthday dinner"]]);
+  assert.deepEqual(p.actions, [{ type: "react", emoji: "🎉" }]);
+});
+
+test("the parser: the last block with a reply wins; braces inside a reply are safe; unfinished JSON keeps its reply; prose stands", () => {
+  assert.equal(parseAgentJson('{"reply":"first"} then {"reply":"second"}').reply, "second");
+  assert.equal(parseAgentJson('{"reply":"use {curly} braces and \\"quotes\\" freely","actions":[]}').reply, 'use {curly} braces and "quotes" freely');
+  assert.equal(parseAgentJson('{"reply":"valid","actions":[]} trailing {broken').reply, "valid");
+  assert.match(parseAgentJson('{"role":"coach","reply":"Half a thought that was cut off mid sentence and').reply, /cut short/);
+  assert.equal(parseAgentJson("plain text only").reply, "plain text only");
+  assert.equal(parseAgentJson('{"role":"coach","reply":""}').reply, "I did not get that. Could you say it another way?");
+});
+
+test("closed and finished items are named to the model as history, and old summaries are marked as possibly out of date", async () => {
+  const s = setup();
+  await goal(s, "Make 250K KES", "06-10-2026");
+  await goal(s, "Reach 2,000,000 KES per month", "31-03-2027");
+  await task(s, "List prospects who can buy 250K worth of offers by Tuesday", 2);
+  await task(s, "Finish Rafiki onboarding video by Wednesday", 4);
+  await s.db.prepare("INSERT INTO reminders (ts, text, due_ts, state) VALUES (?, 'Pay Acme Supplies invoice 114', ?, 'done')").bind(T0, T0).run();
+  await s.db.prepare("INSERT INTO summaries (ts, kind, period, text) VALUES (?, 'day', '14-10-2026', 'Call two past clients about the 250K offer, deadline passed.')").bind(T0).run();
+  s.db.raw.prepare("UPDATE goals SET state = 'dropped' WHERE id = 1").run();
+  s.db.raw.prepare("UPDATE tasks SET state = 'done' WHERE id = 2").run();
+  const c = await buildContext(s.db, T0, 180, false);
+  const closed = c.split("\n").find((l) => l.startsWith("CLOSED BY THE OWNER OR FINISHED"))!;
+  assert.ok(closed, "a closed-items line is in the context");
+  assert.match(closed, /never present any of these as outstanding, urgent, due or overdue/);
+  assert.match(closed, /goal dropped: Make 250K KES/);
+  assert.match(closed, /task done: Finish Rafiki onboarding video by Wednesday/);
+  assert.match(closed, /reminder done: Pay Acme Supplies invoice 114/);
+  assert.ok(!closed.includes("Reach 2,000,000"), "an open goal is not listed as closed");
+  assert.ok(!closed.includes("List prospects"), "an open task is not listed as closed");
+  assert.match(c, /RECENT SUMMARIES \(history, written earlier, may be out of date; never turn an item in them into something outstanding\)/);
+});
+
+test("the command menu offers /tasks and /forget in the code and in deploy.sh", async () => {
+  const { COMMANDS } = await import("../src/commands.ts");
+  const names = COMMANDS.map((c: { command: string }) => c.command);
+  assert.ok(names.includes("tasks") && names.includes("forget"));
 });

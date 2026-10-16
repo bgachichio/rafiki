@@ -5,7 +5,7 @@ export const COMMANDS: { command: string; description: string }[] = [
   { command: "agenda", description: "Today and tomorrow" }, { command: "calendars", description: "Choose which calendars I read" }, { command: "where", description: "Your last shared location" },
   { command: "place", description: "Name your last location" }, { command: "import", description: "Bring in memory and preferences from another AI" }, { command: "export", description: "Download everything I hold about you" },
   { command: "erase", description: "Wipe everything I hold (asks first)" }, { command: "limits", description: "What I cannot do" }, { command: "about", description: "Credits and support" },
-  { command: "brief", description: "Your brief now" }, { command: "goals", description: "Your goals" }, { command: "tasks", description: "Your open tasks" }, { command: "ledger", description: "Customer ledger" }, { command: "money", description: "Spend summary" },
+  { command: "brief", description: "Your brief now" }, { command: "goals", description: "Your goals" }, { command: "tasks", description: "Your open tasks" }, { command: "forget", description: "Forget a saved fact" }, { command: "ledger", description: "Customer ledger" }, { command: "money", description: "Spend summary" },
   { command: "fees", description: "Set your transaction fee tables" }, { command: "settings", description: "Brief time, quiet hours, budget" }, { command: "log", description: "What I did, and what it cost" },
   { command: "why", description: "Why I did my last thing" }, { command: "pause", description: "Stop me acting" }, { command: "resume", description: "Start me again" }, { command: "help", description: "What I can do" },
 ];

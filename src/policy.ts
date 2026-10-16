@@ -43,8 +43,8 @@ export const leadsText = (l: number[]): string =>
 
 const num = (v: string | undefined, d: number, lo: number, hi: number): number => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : d; };
 
-export async function loadPolicy(db: Db): Promise<{ policy: Policy; status: Record<string, Status> }> {
-  const p = await loadPrefs(db);
+export async function loadPolicy(db: Db, prefs?: Record<string, string>): Promise<{ policy: Policy; status: Record<string, Status> }> {
+  const p = prefs ?? await loadPrefs(db); // a caller that has just read the prefs passes them, saving a query
   const st = (await db.prepare("SELECT key, status FROM pref_state").bind().all<{ key: string; status: Status }>()).results;
   const status: Record<string, Status> = Object.fromEntries(st.map((s) => [s.key, s.status]));
   const leads = p["remind.event_leads"] ? p["remind.event_leads"].split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0) : DEFAULT_POLICY.eventLeads;

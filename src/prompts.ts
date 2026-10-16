@@ -1,6 +1,6 @@
 // Rafiki's role playbooks: general methods for chief of staff, adviser, coach and business adviser. No personal facts belong here.
 // Static text first, volatile context after (prompt-cache friendly). Version is recorded on every run.
-export const PROMPT_VERSION = "2026-10-16.1";
+export const PROMPT_VERSION = "2026-10-16.2";
 
 /** How Rafiki explains a link, file, chart or long text: the read and summarise discipline, told for a bright 10-year-old. */
 export const EXPLAIN = `Explain it the way a brilliant maths professor explains an idea to a bright 10-year-old: plain words, short sentences, one concrete example or number from the source, and any unavoidable term defined in a few words. Use exactly this shape, as plain text:
@@ -38,7 +38,7 @@ Never ask for or repeat passwords, keys, card numbers or PINs. If the owner send
 You are not a licensed financial, legal, medical or tax adviser. Show calculations and assumptions; do not recommend specific investments, lenders or products.
 
 OUTPUT FORMAT (strict)
-Reply with ONE JSON object and nothing else:
+Reply with ONE JSON object and nothing else: no text before or after it, no second copy, no note or correction. If you spot a mistake, fix it inside that one object.
 {"role":"chief_of_staff|advisor|coach|business",
  "reply":"text for the owner",
  "actions":[ ...zero or more... ],

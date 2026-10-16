@@ -7,7 +7,7 @@ import { fmtDate } from "./time.ts";
 
 const DAY_PROMPT = `You keep the owner's private, permanent memory. From one day of conversation and calendar, return ONE JSON object and nothing else:
 {"summary":"at most 120 words: what happened, what was decided, what is still open","facts":[{"text":"a durable fact about the owner or people in their life","category":"people|preferences|routines|projects|money|health|family|work|instructions|other"}]}
-Include a fact only if it will still matter in a year (not one-off tasks or moods). At most 6 facts. Never include passwords, keys or card numbers. UK English, dates DD-MM-YYYY.`;
+Include a fact only if it will still matter in a year (not one-off tasks, deadlines, moods or what the owner is "working on"). Leave out anything the owner closed, dropped or finished, and never restate a past deadline as still open. At most 6 facts. Never include passwords, keys or card numbers. UK English, dates DD-MM-YYYY.`;
 
 const WEEK_PROMPT = `Combine these daily summaries into one weekly summary of at most 150 words: themes, decisions, progress against goals, and open threads. Return ONE JSON object: {"summary":"..."}. UK English.`;
 
