@@ -51,3 +51,31 @@ export async function closeMatching(db: Db, kind: CloseKind, match: string, stat
   for (const h of hits) await db.prepare(`UPDATE ${t.sql} SET state = ? WHERE id = ?`).bind(state, h.id).run();
   return hits.map((h) => h.text);
 }
+
+// ---- closed items are history: keep them out of what the model reads ------------------------------------------------------
+// A dropped goal still lives in older facts, nightly summaries, recalled messages and Rafiki's own earlier replies, and the
+// model re-reads all four every turn. Telling it to ignore them was not enough (2026-10-16: it kept leading with a target the
+// owner had dropped), so what restates a closed item is taken out before the model sees it.
+
+export interface ClosedItem { kind: string; text: string; state: string }
+export const CLOSED_SQL = "SELECT 'goal' AS k, text, state FROM (SELECT text, state FROM goals WHERE state != 'open' ORDER BY id DESC LIMIT 8) UNION ALL SELECT 'task', text, state FROM (SELECT text, state FROM tasks WHERE state != 'open' ORDER BY id DESC LIMIT 14) UNION ALL SELECT 'reminder', text, state FROM (SELECT text, state FROM reminders WHERE state IN ('done', 'dropped') AND text NOT LIKE 'Coming up %' ORDER BY id DESC LIMIT 8)";
+export async function loadClosed(db: Db): Promise<ClosedItem[]> {
+  return (await db.prepare(CLOSED_SQL).bind().all<{ k: string; text: string; state: string }>()).results.map((r) => ({ kind: r.k, text: r.text, state: r.state }));
+}
+
+/** True when the text shares at least three distinctive words with a closed item: it is talking about the same thing. */
+export function retiredBy(text: string, closed: readonly string[]): boolean {
+  const w = new Set(words(text));
+  return closed.some((c) => { let n = 0; for (const x of new Set(words(c))) if (w.has(x) && ++n >= 3) return true; return false; });
+}
+/** The sentences of a summary that do not restate a closed item. */
+export function dropRetiredSentences(text: string, closed: readonly string[]): string {
+  if (!closed.length) return text;
+  return text.split(/(?<=[.!?])\s+/).filter((s) => !retiredBy(s, closed)).join(" ").trim();
+}
+/** Rafiki's own earlier replies that restate a closed item are left out of the recent conversation, so it does not echo itself. */
+export function scrubHistory<T extends { role: string; text: string }>(history: readonly T[], closed: readonly string[]): T[] {
+  return history.map((m) => (m.role === "assistant" && retiredBy(m.text, closed) ? { ...m, text: "[an earlier reply is left out: it mentioned items the owner has since closed]" } : m));
+}
+/** Facts about a project or piece of work that restate a closed item are history. Routines, rules and preferences are kept. */
+export const FILTERED_FACT_CATEGORIES = new Set(["projects", "work", "other", "people", "money", "family"]);

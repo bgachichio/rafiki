@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { executeActions, validateActions } from "../src/actions.ts";
-import { buildContext, parseAgentJson, type Ctx } from "../src/agent.ts";
+import { buildContext, parseAgentJson, runAgent, type Ctx } from "../src/agent.ts";
 import { candidates, ensureToday, focusCallback } from "../src/focus.ts";
-import { closeMatching, dmyKey, isLapsed } from "../src/lifecycle.ts";
+import { closeMatching, dmyKey, dropRetiredSentences, isLapsed, retiredBy, scrubHistory } from "../src/lifecycle.ts";
 import { goalsPanel, maybeGoalReview, panelCallback, staleNudge, tasksPanel } from "../src/panels.ts";
 import { buildBrief, maybeBrief } from "../src/schedule.ts";
 import { Telegram } from "../src/telegram.ts";
-import { ENV, fakeFetch, makeDb, sent } from "./shim.ts";
+import { agentJson, ENV, fakeFetch, makeDb, sent } from "./shim.ts";
 
 const OWNER = 100200300;
 const DAY = 86400000;
@@ -238,4 +238,38 @@ test("the command menu offers /tasks and /forget in the code and in deploy.sh", 
   const { COMMANDS } = await import("../src/commands.ts");
   const names = COMMANDS.map((c: { command: string }) => c.command);
   assert.ok(names.includes("tasks") && names.includes("forget"));
+});
+
+test("retiredBy: three shared distinctive words means the same thing; routines are not touched by the fact filter", () => {
+  const closed = ["Call two past clients about 250K upfront cash offer", "Finish Rafiki onboarding video by Wednesday"];
+  assert.ok(retiredBy("Owner is building a Rafiki onboarding video and is working on a 250K upfront cash offer to past clients.", closed));
+  assert.ok(!retiredBy("The owner banks with Example Bank.", closed));
+  assert.ok(!retiredBy("Two clients paid on time.", closed), "two shared words is not enough");
+  assert.equal(dropRetiredSentences("Set a reminder to call John. Call two past clients about the 250K offer, upfront cash. Gym at six.", closed), "Set a reminder to call John. Gym at six.");
+  const h = scrubHistory([{ role: "user", text: "Call two past clients about 250K upfront cash offer" }, { role: "assistant", text: "Three things: call two past clients about the 250K upfront cash offer." }, { role: "assistant", text: "Lunch is at one." }], closed);
+  assert.equal(h[0]!.text, "Call two past clients about 250K upfront cash offer", "the owner's own words are never edited");
+  assert.match(h[1]!.text, /earlier reply is left out/);
+  assert.equal(h[2]!.text, "Lunch is at one.");
+});
+
+test("a dropped target does not reach the model through facts, summaries, recall or Rafiki's own earlier replies", async () => {
+  const db = makeDb();
+  const fx = fakeFetch([agentJson({ reply: "ok", actions: [], buttons: [] })]);
+  const ctx: Ctx = { db, env: ENV, f: fx.f, now: T0, off: 180 };
+  db.raw.prepare("INSERT INTO tasks (ts, text, state) VALUES (?, 'Call two past clients about 250K upfront cash offer', 'dropped')").run(T0 - 5 * DAY);
+  db.raw.prepare("INSERT INTO facts (ts, text, category, source) VALUES (?, 'Owner is working on a 250K upfront cash offer to past clients.', 'projects', 'summary')").run(T0 - 4 * DAY);
+  db.raw.prepare("INSERT INTO facts (ts, text, category, source) VALUES (?, 'The owner banks with Example Bank.', 'money', 'summary')").run(T0 - 4 * DAY);
+  db.raw.prepare("INSERT INTO facts (ts, text, category, source) VALUES (?, 'Owner aims to go to the gym three times a week.', 'routines', 'summary')").run(T0 - 4 * DAY);
+  db.raw.prepare("INSERT INTO summaries (ts, kind, period, text) VALUES (?, 'day', '14-10-2026', 'Set a reminder to call John. Call two past clients about the 250K upfront cash offer, it is urgent. Lunch with Sam.')").run(T0 - DAY);
+  db.raw.prepare("INSERT INTO messages (ts, role, text) VALUES (?, 'assistant', 'Priorities: call two past clients about the 250K upfront cash offer today.')").run(T0 - 3600000);
+  db.raw.prepare("INSERT INTO messages (ts, role, text) VALUES (?, 'user', 'Thanks, what about the plan for tomorrow?')").run(T0 - 3000000);
+  await runAgent(ctx, "What needs my attention today?");
+  const sent = JSON.stringify(fx.llm[0]!.body);
+  assert.ok(!/250K upfront cash/.test(sent.replace(/CLOSED BY THE OWNER[^"]*/, "")), "no fact, summary sentence or earlier reply restates the closed target");
+  assert.match(sent, /CLOSED BY THE OWNER OR FINISHED/);
+  assert.match(sent, /Example Bank/, "an unrelated fact stays");
+  assert.match(sent, /gym three times a week/, "a routine stays");
+  assert.match(sent, /Set a reminder to call John/);
+  assert.match(sent, /Lunch with Sam/);
+  assert.match(sent, /earlier reply is left out/);
 });

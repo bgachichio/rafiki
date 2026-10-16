@@ -1,4 +1,5 @@
 // Nightly consolidation: yesterday becomes a summary and a few durable facts, kept forever and searchable.
+import { dropRetiredSentences, loadClosed, retiredBy } from "./lifecycle.ts";
 import { logRun, type Ctx } from "./agent.ts";
 import { getEvents, evLine } from "./calendar.ts";
 import { chat, CreditError } from "./llm.ts";
@@ -32,17 +33,20 @@ export async function consolidateDay(ctx: Ctx, dayStart: number): Promise<Consol
   const convo = msgs.results.map((m) => `${m.role === "assistant" ? "Rafiki" : "Owner"}: ${m.text.slice(0, 500)}`).join("\n").slice(0, 9000);
   const cal = evs.length ? `\n\nCALENDAR THAT DAY:\n${evs.slice(0, 12).map((e) => evLine(e, off)).join("\n")}` : "";
   const started = Date.now();
+  const closed = await loadClosed(db);
+  const closedTexts = closed.map((c) => c.text);
+  const closedNote = closed.length ? `\n\nCLOSED OR FINISHED BY THE OWNER (do not carry these forward as open, urgent or as facts):\n${closed.slice(0, 12).map((c) => `- ${c.kind} ${c.state}: ${c.text.slice(0, 90)}`).join("\n")}` : "";
   try {
-    const r = await chat(env, f, { sens: "S2", deep: true, maxTokens: 600, messages: [{ role: "system", content: DAY_PROMPT }, { role: "user", content: `DAY ${period}\n\n${convo}${cal}` }] });
+    const r = await chat(env, f, { sens: "S2", deep: true, maxTokens: 600, messages: [{ role: "system", content: DAY_PROMPT }, { role: "user", content: `DAY ${period}\n\n${convo}${cal}${closedNote}` }] });
     const j = parse(r.text);
-    const summary = j && typeof j.summary === "string" ? j.summary.trim().slice(0, 1200) : "";
+    const summary = j && typeof j.summary === "string" ? dropRetiredSentences(j.summary.trim().slice(0, 1200), closedTexts) : "";
     let facts = 0;
     if (summary) {
       const ins = await db.prepare("INSERT INTO summaries (ts, kind, period, text) VALUES (?, 'day', ?, ?) ON CONFLICT DO NOTHING RETURNING id").bind(now, period, summary).first<{ id: number }>();
       if (ins) await indexText(db, "summary", ins.id, summary);
       if (Array.isArray(j?.facts)) {
         for (const x of (j.facts as { text?: unknown; category?: unknown }[]).slice(0, 6)) {
-          if (typeof x?.text === "string" && (await addFact(db, now, x.text, isCategory(x.category) ? x.category : "other", `summary ${period}`)) !== null) facts++;
+          if (typeof x?.text === "string" && !retiredBy(x.text, closedTexts) && (await addFact(db, now, x.text, isCategory(x.category) ? x.category : "other", `summary ${period}`)) !== null) facts++;
         }
       }
     }
