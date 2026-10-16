@@ -3,6 +3,7 @@ import { executeActions, validateActions } from "./actions.ts";
 import { CALENDAR_WORDS, syncIfStale, type CalEvent } from "./calendar.ts";
 import type { GoogleEnv } from "./google.ts";
 import { fmtHit, ftsQuery, recall, type Hit } from "./memory.ts";
+import { ageDays, isLapsed, STALE_TASK_DAYS } from "./lifecycle.ts";
 import { prefsLines } from "./prefs.ts";
 import { loadPolicy, policyLine } from "./policy.ts";
 import { recallSkills, type SkillHit } from "./skills.ts";
@@ -88,7 +89,7 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
     T("pref", "key", "value", "NULL", "NULL", "FROM prefs WHERE key NOT LIKE 'writing_sample_%'"),
     T("skill", "name", "description", "NULL", "NULL", "FROM (SELECT * FROM skills WHERE enabled = 1 ORDER BY name LIMIT 40)"),
     T("goal", "text", "target", "by_date", "NULL", "FROM (SELECT * FROM goals WHERE state = 'open' ORDER BY id DESC LIMIT 5)"),
-    T("task", "text", "NULL", "NULL", "NULL", "FROM (SELECT * FROM tasks WHERE state = 'open' ORDER BY id LIMIT 8)"),
+    T("task", "text", "CAST(ts AS TEXT)", "NULL", "NULL", "FROM (SELECT * FROM tasks WHERE state = 'open' ORDER BY id LIMIT 8)"),
     T("rem", "text", "CAST(due_ts AS TEXT)", "NULL", "NULL", "FROM (SELECT * FROM reminders WHERE state IN ('open','flagged') ORDER BY due_ts LIMIT 8)"),
     T("led", "prospect", "CAST(rung AS TEXT)", "next_ask", "NULL", "FROM (SELECT * FROM ledger ORDER BY last_move_ts DESC LIMIT 8)"),
     T("sum", "text", "kind", "period", "NULL", "FROM (SELECT * FROM summaries ORDER BY ts DESC LIMIT 4)"),
@@ -117,9 +118,9 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
   const facts = by("fact");
   if (facts.length) lines.push("OWNER FACTS (permanent memory): " + facts.map((f) => `[${f.b}] ${clip(f.a, 160)}`).join(" | "));
   const goals = by("goal");
-  if (goals.length) lines.push("GOALS: " + goals.map((g) => `${clip(g.a)}${g.b ? ` (${g.b})` : ""}${g.c ? ` by ${g.c}` : ""}`).join(" | "));
+  if (goals.length) lines.push("GOALS: " + goals.map((g) => `${clip(g.a)}${g.b ? ` (${g.b})` : ""}${g.c ? ` by ${g.c}` : ""}${isLapsed(g.c, now, off) ? " [DATE PASSED: not a live priority, never push it; if it comes up, ask once whether it is done, moved or closed]" : ""}`).join(" | "));
   const tasks = by("task");
-  if (tasks.length) lines.push("OPEN TASKS: " + tasks.map((t) => clip(t.a)).join(" | "));
+  if (tasks.length) lines.push("OPEN TASKS: " + tasks.map((t) => `${clip(t.a)}${ageDays(Number(t.b), now) >= STALE_TASK_DAYS ? ` [${ageDays(Number(t.b), now)} days old, parked: not a priority]` : ""}`).join(" | "));
   const rem = by("rem");
   if (rem.length) lines.push("REMINDERS: " + rem.map((r) => `${fmtDateTime(Number(r.b), off)} ${clip(r.a)}`).join(" | "));
   const led = by("led");

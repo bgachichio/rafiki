@@ -4,26 +4,30 @@
 import type { Ctx } from "./agent.ts";
 import { canNudge, isPaused, logOut } from "./budget.ts";
 import { getSetting, setSetting, type Db } from "./db.ts";
+import { LIVE_GOAL_SQL, staleBefore, todayKey } from "./lifecycle.ts";
 import { recordSignal } from "./policy.ts";
 import type { Button, Telegram } from "./telegram.ts";
-import { fmtDate, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
+import { fmtDate, fmtTime, minutesOfDay, parseHM, startOfLocalDay, weekday } from "./time.ts";
 
-export interface Candidate { text: string; ref: string }
+/** label: how the morning brief words it, when that differs from the One (a time in front, "Move your goal forward"). */
+export interface Candidate { text: string; ref: string; label?: string }
 const DAY = 86400000;
 const dayKey = (ms: number, off: number): string => fmtDate(ms, off).split(" ").pop()!; // "Sat 10-10-2026" -> "10-10-2026"
 
-/** What could be today's One, best first: overdue, then due today, then the oldest open task, then a step on a goal. */
+/** What could be today's One, best first: overdue, then due today, then the oldest open task, then a step on a goal.
+ *  The morning brief reads this same list, so what is dropped, parked or past its date stays out of both. A task untouched
+ *  for a week is parked (see /tasks) and a goal past its date is not live (see /goals); neither is offered. */
 export async function candidates(db: Db, now: number, off: number): Promise<Candidate[]> {
   const end = startOfLocalDay(now, off) + DAY;
   const out: Candidate[] = [];
   const over = await db.prepare("SELECT id, text FROM reminders WHERE state IN ('flagged','awaiting') ORDER BY due_ts LIMIT 2").bind().all<{ id: number; text: string }>();
   for (const r of over.results) out.push({ text: `Overdue, still open: ${r.text}`, ref: `r:${r.id}` });
-  const today = await db.prepare("SELECT id, text FROM reminders WHERE state = 'open' AND due_ts < ? AND text NOT LIKE 'Coming up %' ORDER BY due_ts LIMIT 3").bind(end).all<{ id: number; text: string }>();
-  for (const r of today.results) out.push({ text: r.text, ref: `r:${r.id}` });
-  const tasks = await db.prepare("SELECT id, text FROM tasks WHERE state = 'open' ORDER BY id LIMIT 3").bind().all<{ id: number; text: string }>();
+  const today = await db.prepare("SELECT id, text, due_ts FROM reminders WHERE state = 'open' AND due_ts < ? AND text NOT LIKE 'Coming up %' ORDER BY due_ts LIMIT 3").bind(end).all<{ id: number; text: string; due_ts: number }>();
+  for (const r of today.results) out.push({ text: r.text, ref: `r:${r.id}`, label: `${fmtTime(r.due_ts, off)} ${r.text}` });
+  const tasks = await db.prepare("SELECT id, text FROM tasks WHERE state = 'open' AND ts > ? ORDER BY id LIMIT 3").bind(staleBefore(now)).all<{ id: number; text: string }>();
   for (const t of tasks.results) out.push({ text: t.text, ref: `t:${t.id}` });
-  const goal = await db.prepare("SELECT id, text FROM goals WHERE state = 'open' ORDER BY id LIMIT 1").bind().first<{ id: number; text: string }>();
-  if (goal) out.push({ text: `One step on: ${goal.text}`, ref: `g:${goal.id}` });
+  const goal = await db.prepare(`SELECT id, text, by_date FROM goals WHERE state = 'open' AND ${LIVE_GOAL_SQL} ORDER BY id LIMIT 1`).bind(todayKey(now, off)).first<{ id: number; text: string; by_date: string | null }>();
+  if (goal) out.push({ text: `One step on: ${goal.text}`, ref: `g:${goal.id}`, label: `Move your goal forward: ${goal.text}${goal.by_date ? ` (by ${goal.by_date})` : ""}` });
   // Anything the owner dropped as the One in the last 30 days is not offered again, whatever list it still sits on.
   const dropped = new Set((await db.prepare("SELECT text, ref FROM focus WHERE state = 'dropped' AND ts >= ?").bind(now - 30 * DAY).all<{ text: string; ref: string | null }>()).results.flatMap((r) => [r.text, r.ref ?? ""]).filter(Boolean));
   const seen = new Set<string>();
@@ -70,13 +74,14 @@ export async function focusLines(db: Db, now: number, off: number): Promise<stri
   if (s.days >= 2) lines.push(`Focus streak: ${s.days} days.`);
   return lines;
 }
-export const FOCUS_BUTTONS: Button[] = [{ text: "One done", data: "f:done" }, { text: "Swap it", data: "f:swap" }];
+export const FOCUS_BUTTONS: Button[] = [{ text: "One done", data: "f:done" }, { text: "Swap it", data: "f:swap" }, { text: "Drop it", data: "f:drop" }];
 
-/** Close the underlying reminder or task too, so nothing chases what is already finished. */
+/** Close the underlying reminder, task or goal too, so nothing chases what is already finished. */
 async function closeRef(db: Db, ref: string | null, state: "done" | "dropped" = "done"): Promise<void> {
-  const m = /^([rt]):(\d+)$/.exec(ref ?? "");
-  if (!m) return;
-  await db.prepare(m[1] === "r" ? "UPDATE reminders SET state = ? WHERE id = ?" : "UPDATE tasks SET state = ? WHERE id = ?").bind(state, Number(m[2])).run();
+  const m = /^([rtg]):(\d+)$/.exec(ref ?? "");
+  if (!m || (m[1] === "g" && state === "done")) return; // a finished step on a goal does not finish the goal
+  const table = m[1] === "r" ? "reminders" : m[1] === "t" ? "tasks" : "goals";
+  await db.prepare(`UPDATE ${table} SET state = ? WHERE id = ?`).bind(state, Number(m[2])).run();
 }
 
 export async function focusCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {

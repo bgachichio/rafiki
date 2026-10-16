@@ -3,12 +3,14 @@ import type { Db } from "./db.ts";
 import { mayExecute } from "./gates.ts";
 import { addFact, isCategory, type Category } from "./memory.ts";
 import { DEFAULT_POLICY, type Policy } from "./policy.ts";
+import { closeMatching, type CloseKind } from "./lifecycle.ts";
 import { feeFor, kes, type Tier } from "./spend.ts";
 import { fmtDateTime, parseHM, parseLocalIso } from "./time.ts";
 
 export type Action =
   | { type: "reminder"; text: string; dueMs: number; repeat: "none" | "daily" | "weekly"; kind: "event" | "task" }
   | { type: "task_add"; text: string }
+  | { type: "close"; kind: CloseKind; match: string; state: "done" | "dropped" }
   | { type: "goal_add"; text: string; metric: string | null; target: string | null; by: string | null }
   | { type: "ledger_set"; prospect: string; rung: number; nextAsk: string | null }
   | { type: "spend"; amountCents: number; category: string; channel: string | null; note: string }
@@ -44,6 +46,12 @@ export function validateActions(raw: unknown, now: number, off: number): Action[
       case "task_add": {
         const text = str(o.text, 300);
         if (text) out.push({ type, text });
+        break;
+      }
+      case "close": {
+        const match = str(o.match, 120);
+        const kind = o.kind === "goal" || o.kind === "reminder" || o.kind === "task" ? o.kind : null;
+        if (match && kind) out.push({ type, kind, match, state: o.state === "done" ? "done" : "dropped" });
         break;
       }
       case "goal_add": {
@@ -136,6 +144,11 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         await db.prepare("INSERT INTO tasks (ts, text) VALUES (?, ?)").bind(now, a.text).run();
         done.push(`Task added: ${a.text}`);
         break;
+      case "close": {
+        const hit = await closeMatching(db, a.kind, a.match, a.state);
+        done.push(hit.length ? `${a.state === "done" ? "Marked done" : "Closed for good"}: ${hit.join("; ")}` : `No open ${a.kind} matches "${a.match}".`);
+        break;
+      }
       case "goal_add": {
         // The model sometimes restates a goal it already holds: update it instead of saving a duplicate.
         const same = await db.prepare("SELECT id FROM goals WHERE state = 'open' AND lower(text) = lower(?)").bind(a.text).first<{ id: number }>();

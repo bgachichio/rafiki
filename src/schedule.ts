@@ -4,7 +4,8 @@ import { capUsd, dailyCost, type Ctx } from "./agent.ts";
 import { briefLine, getEvents, conflicts } from "./calendar.ts";
 import { canNudge, isPaused, logOut } from "./budget.ts";
 import { feedbackRow } from "./feedback.ts";
-import { FOCUS_BUTTONS, focusLines, todays, weekScore } from "./focus.ts";
+import { candidates, FOCUS_BUTTONS, focusLines, todays, weekScore } from "./focus.ts";
+import { maybeGoalReview, staleNudge } from "./panels.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
 import { loadPrefs } from "./prefs.ts";
@@ -56,27 +57,23 @@ export async function sweepReminders(ctx: Ctx, tg: Telegram, chatId: number): Pr
   return sent;
 }
 
-export async function buildBrief(ctx: Ctx): Promise<string> {
+/** The morning brief. Its list is the same one the One is picked from (focus.ts candidates), so anything dropped, parked or
+ *  past its date is out of both. `scheduled` adds the once-a-week line about parked tasks. */
+export async function buildBrief(ctx: Ctx, scheduled = false): Promise<string> {
   const { db, now, off } = ctx;
   const dayStart = startOfLocalDay(now, off);
   const dayEnd = dayStart + 86400000;
-  const items: string[] = [];
-  const flagged = await db.prepare("SELECT text FROM reminders WHERE state IN ('flagged', 'awaiting') ORDER BY due_ts LIMIT 3").bind().all<{ text: string }>();
-  for (const f of flagged.results) items.push(`Overdue, still open: ${f.text}`);
-  const today = await db.prepare("SELECT text, due_ts FROM reminders WHERE state = 'open' AND due_ts < ? ORDER BY due_ts LIMIT 5").bind(dayEnd).all<{ text: string; due_ts: number }>();
-  for (const t of today.results) items.push(`${fmtTime(t.due_ts, off)} ${t.text}`);
-  const tasks = await db.prepare("SELECT text FROM tasks WHERE state = 'open' ORDER BY id LIMIT 5").bind().all<{ text: string }>();
-  for (const t of tasks.results) items.push(t.text);
-  const goal = await db.prepare("SELECT text, by_date FROM goals WHERE state = 'open' ORDER BY id LIMIT 1").bind().first<{ text: string; by_date: string | null }>();
-  if (items.length < 3 && goal) items.push(`Move your goal forward: ${goal.text}${goal.by_date ? ` (by ${goal.by_date})` : ""}`);
   const lines = [`Morning. ${fmtDateTime(now, off).split(" ").slice(0, 2).join(" ")}`];
   // The One leads; the rest of the list is there, but smaller, so the day has one clear priority.
   const one = await focusLines(db, now, off);
   lines.push(...one);
-  const oneText = (await todays(db, now, off))?.text ?? "";
-  const rest = items.filter((t) => !t.endsWith(oneText) || !oneText).slice(0, Math.max(0, (await loadPolicy(db)).policy.briefItems - (one.length ? 1 : 0)));
+  const f = await todays(db, now, off);
+  const rest = (await candidates(db, now, off)).filter((c) => !f || (c.ref !== f.ref && c.text !== f.text)).map((c) => c.label ?? c.text)
+    .slice(0, Math.max(0, (await loadPolicy(db)).policy.briefItems - (one.length ? 1 : 0)));
   if (rest.length) { lines.push(one.length ? "Also on your plate:" : "Top of your list:"); rest.forEach((t) => lines.push(`- ${t}`)); }
   if (!one.length && !rest.length) lines.push("Nothing on your list yet. Tell me one thing that matters today.");
+  const stale = scheduled ? await staleNudge(db, now) : null;
+  if (stale) lines.push(stale);
   const evs = await getEvents(db, dayStart, dayEnd + 86400000);
   const cal = briefLine(evs, now, off);
   if (cal) lines.push(cal);
@@ -100,9 +97,10 @@ export async function maybeBrief(ctx: Ctx, tg: Telegram, chatId: number): Promis
   if (nowM < want || nowM >= want + 60) return false; // a one-hour window so a missed cron tick still delivers
   if ((await getSetting(ctx.db, "brief_sent_date")) === today) return false;
   await setSetting(ctx.db, "brief_sent_date", today);
-  const brief = await buildBrief(ctx); // picks today's One if there is none yet
+  const brief = await buildBrief(ctx, true); // picks today's One if there is none yet
   await tg.send(chatId, brief, [...((await todays(ctx.db, ctx.now, ctx.off)) ? [FOCUS_BUTTONS] : []), [{ text: "Plan my day", data: "say:Plan my day" }], feedbackRow("brief")]);
   await logOut(ctx, "brief", false);
+  await maybeGoalReview(ctx, tg, chatId); // a goal past its date is asked about once a week, right after the brief
   await creditAlert(ctx, tg, chatId);
   return true;
 }

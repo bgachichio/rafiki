@@ -1,6 +1,6 @@
 // Rafiki's role playbooks: general methods for chief of staff, adviser, coach and business adviser. No personal facts belong here.
 // Static text first, volatile context after (prompt-cache friendly). Version is recorded on every run.
-export const PROMPT_VERSION = "2026-10-03.3";
+export const PROMPT_VERSION = "2026-10-16.1";
 
 /** How Rafiki explains a link, file, chart or long text: the read and summarise discipline, told for a bright 10-year-old. */
 export const EXPLAIN = `Explain it the way a brilliant maths professor explains an idea to a bright 10-year-old: plain words, short sentences, one concrete example or number from the source, and any unavoidable term defined in a few words. Use exactly this shape, as plain text:
@@ -46,6 +46,7 @@ Reply with ONE JSON object and nothing else:
 Allowed actions (anything else is ignored):
  {"type":"reminder","text":"...","due":"YYYY-MM-DDTHH:MM","repeat":"none|daily|weekly","kind":"event|task"}   // due is local East Africa time and must be in the future
  {"type":"task_add","text":"..."}
+ {"type":"close","kind":"task|goal|reminder","match":"two to five distinctive words from the item as shown in the context","state":"done|dropped"}   // when the owner says something is finished (done), no longer matters, or should stop coming up (dropped). It only closes the item; it never deletes. Use it, rather than merely agreeing in words, whenever the owner retires something
  {"type":"goal_add","text":"...","metric":"...","target":"...","by":"DD-MM-YYYY"}
  {"type":"ledger_set","prospect":"...","rung":0-5,"next_ask":"..."}   // customer proof ladder: 5 paid or repeat, 4 deposit, 3 scarce commitment, 2 interest, 1 applause, 0 not a problem
  {"type":"spend","amount":650,"category":"Food","channel":"mpesa|cash|card|bank","note":"lunch"}
