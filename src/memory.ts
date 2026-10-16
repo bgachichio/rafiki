@@ -66,6 +66,9 @@ export async function addFact(db: Db, now: number, text: string, category: Categ
   return r.id;
 }
 
+/** A fact the model marked as a guess ("assumed", "presumably", "not confirmed") is not a fact about the owner and is never saved. */
+export const isHedged = (text: string): boolean => /\b(?:assumed|assuming|assumption|presumably|unconfirmed|not confirmed)\b/i.test(text);
+
 export async function forgetFact(db: Db, id: number): Promise<boolean> {
   const r = await db.prepare("DELETE FROM facts WHERE id = ? RETURNING id").bind(id).first<{ id: number }>();
   if (!r) return false;

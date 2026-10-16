@@ -30,7 +30,11 @@ export const ageDays = (ts: number, now: number): number => Math.max(0, Math.flo
 export const dateAhead = (now: number, off: number, days: number): string => fmtDate(now + days * DAY_MS, off).split(" ").pop()!;
 
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "about", "from", "your", "you", "our", "to", "of", "in", "on", "my", "it"]);
-const words = (s: string): string[] => (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 1 && !STOP.has(w));
+/** Amounts are written many ways ("250K", "250,000", "KES 250000"): all become 250000, so they compare equal. */
+const norm = (s: string): string => s.toLowerCase()
+  .replace(/(\d[\d,]*(?:\.\d+)?)\s*k\b/g, (_, n: string) => String(Math.round(parseFloat(n.replace(/,/g, "")) * 1000)))
+  .replace(/(?<=\d),(?=\d{3}(?!\d))/g, "");
+const words = (s: string): string[] => (norm(s).match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 1 && !STOP.has(w));
 
 export type CloseKind = "task" | "goal" | "reminder";
 const TABLE: Record<CloseKind, { sql: string; open: string }> = {
@@ -63,10 +67,11 @@ export async function loadClosed(db: Db): Promise<ClosedItem[]> {
   return (await db.prepare(CLOSED_SQL).bind().all<{ k: string; text: string; state: string }>()).results.map((r) => ({ kind: r.k, text: r.text, state: r.state }));
 }
 
-/** True when the text shares at least three distinctive words with a closed item: it is talking about the same thing. */
+/** True when the text shares enough distinctive words with a closed item to be talking about the same thing: three words,
+ *  where a long number (an amount or an invoice number, five digits or more) counts double. */
 export function retiredBy(text: string, closed: readonly string[]): boolean {
   const w = new Set(words(text));
-  return closed.some((c) => { let n = 0; for (const x of new Set(words(c))) if (w.has(x) && ++n >= 3) return true; return false; });
+  return closed.some((c) => { let n = 0; for (const x of new Set(words(c))) if (w.has(x) && (n += /^\d{5,}$/.test(x) ? 2 : 1) >= 3) return true; return false; });
 }
 /** The sentences of a summary that do not restate a closed item. */
 export function dropRetiredSentences(text: string, closed: readonly string[]): string {

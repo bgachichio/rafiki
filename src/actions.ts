@@ -1,7 +1,7 @@
 // Validate and execute the actions a model proposes. Only gate G0 and G1 actions exist; anything else is dropped.
 import type { Db } from "./db.ts";
 import { mayExecute } from "./gates.ts";
-import { addFact, isCategory, type Category } from "./memory.ts";
+import { addFact, isCategory, isHedged, type Category } from "./memory.ts";
 import { DEFAULT_POLICY, type Policy } from "./policy.ts";
 import { closeMatching, type CloseKind } from "./lifecycle.ts";
 import { feeFor, kes, type Tier } from "./spend.ts";
@@ -172,6 +172,7 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         break;
       }
       case "note":
+        if (isHedged(a.text)) { done.push("Not saved: that was a guess, not something you told me."); break; }
         done.push((await addFact(db, now, a.text, a.category, "chat")) !== null ? "Noted." : "Already knew that.");
         break;
       case "poll": {

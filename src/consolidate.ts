@@ -3,12 +3,12 @@ import { dropRetiredSentences, loadClosed, retiredBy } from "./lifecycle.ts";
 import { logRun, type Ctx } from "./agent.ts";
 import { getEvents, evLine } from "./calendar.ts";
 import { chat, CreditError } from "./llm.ts";
-import { addFact, indexText, isCategory } from "./memory.ts";
+import { addFact, indexText, isCategory, isHedged } from "./memory.ts";
 import { fmtDate } from "./time.ts";
 
 const DAY_PROMPT = `You keep the owner's private, permanent memory. From one day of conversation and calendar, return ONE JSON object and nothing else:
 {"summary":"at most 120 words: what happened, what was decided, what is still open","facts":[{"text":"a durable fact about the owner or people in their life","category":"people|preferences|routines|projects|money|health|family|work|instructions|other"}]}
-Include a fact only if it will still matter in a year (not one-off tasks, deadlines, moods or what the owner is "working on"). Leave out anything the owner closed, dropped or finished, and never restate a past deadline as still open. At most 6 facts. Never include passwords, keys or card numbers. UK English, dates DD-MM-YYYY.`;
+Never include a guess or assumption ("assumed", "presumably", "probably"): only what the owner actually said. Include a fact only if it will still matter in a year (not one-off tasks, deadlines, moods or what the owner is "working on"). Leave out anything the owner closed, dropped or finished, and never restate a past deadline as still open. At most 6 facts. Never include passwords, keys or card numbers. UK English, dates DD-MM-YYYY.`;
 
 const WEEK_PROMPT = `Combine these daily summaries into one weekly summary of at most 150 words: themes, decisions, progress against goals, and open threads. Return ONE JSON object: {"summary":"..."}. UK English.`;
 
@@ -46,7 +46,7 @@ export async function consolidateDay(ctx: Ctx, dayStart: number): Promise<Consol
       if (ins) await indexText(db, "summary", ins.id, summary);
       if (Array.isArray(j?.facts)) {
         for (const x of (j.facts as { text?: unknown; category?: unknown }[]).slice(0, 6)) {
-          if (typeof x?.text === "string" && !retiredBy(x.text, closedTexts) && (await addFact(db, now, x.text, isCategory(x.category) ? x.category : "other", `summary ${period}`)) !== null) facts++;
+          if (typeof x?.text === "string" && !isHedged(x.text) && !retiredBy(x.text, closedTexts) && (await addFact(db, now, x.text, isCategory(x.category) ? x.category : "other", `summary ${period}`)) !== null) facts++;
         }
       }
     }

@@ -245,6 +245,10 @@ test("retiredBy: three shared distinctive words means the same thing; routines a
   assert.ok(retiredBy("Owner is building a Rafiki onboarding video and is working on a 250K upfront cash offer to past clients.", closed));
   assert.ok(!retiredBy("The owner banks with Example Bank.", closed));
   assert.ok(!retiredBy("Two clients paid on time.", closed), "two shared words is not enough");
+  // amounts compare equal however they are written
+  assert.ok(retiredBy("On 2 October the owner set two goals: 250,000 KES by Tuesday at 09:00.", ["Make 250K KES"]), "250,000 and 250K are the same amount");
+  assert.ok(!retiredBy("Your goal is 2,000,000 KES a month by March.", ["Make 250K KES"]), "a different amount is a different thing");
+  assert.ok(retiredBy("Acme Supplies invoice 114 was KES 48,000.", ["Pay Acme Supplies invoice 114: 48,000 KES to the till"]));
   assert.equal(dropRetiredSentences("Set a reminder to call John. Call two past clients about the 250K offer, upfront cash. Gym at six.", closed), "Set a reminder to call John. Gym at six.");
   const h = scrubHistory([{ role: "user", text: "Call two past clients about 250K upfront cash offer" }, { role: "assistant", text: "Three things: call two past clients about the 250K upfront cash offer." }, { role: "assistant", text: "Lunch is at one." }], closed);
   assert.equal(h[0]!.text, "Call two past clients about 250K upfront cash offer", "the owner's own words are never edited");
@@ -272,4 +276,17 @@ test("a dropped target does not reach the model through facts, summaries, recall
   assert.match(sent, /Set a reminder to call John/);
   assert.match(sent, /Lunch with Sam/);
   assert.match(sent, /earlier reply is left out/);
+});
+
+test("a guess is never saved as a fact: the model's note and the nightly extraction both refuse hedged text", async () => {
+  const { isHedged } = await import("../src/memory.ts");
+  assert.ok(isHedged("Owner has a child whose school fees are paid monthly (assumed, not confirmed)."));
+  assert.ok(isHedged("The owner is presumably saving for a house."));
+  assert.ok(!isHedged("The owner banks with Example Bank."));
+  const s = setup();
+  const [n1, n2] = validateActions([{ type: "note", text: "School fees are paid monthly (assumed, not confirmed)", category: "family" }, { type: "note", text: "The owner prefers tea in the morning", category: "preferences" }], T0, 180);
+  const done = await executeActions(s.db, [n1!, n2!], T0, 180);
+  assert.equal(done[0], "Not saved: that was a guess, not something you told me.");
+  assert.equal(done[1], "Noted.");
+  assert.equal((s.db.raw.prepare("SELECT COUNT(*) AS n FROM facts").get() as { n: number }).n, 1);
 });
