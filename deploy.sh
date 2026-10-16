@@ -31,7 +31,8 @@ const j = async (u, o) => {
   console.error("network problem reaching " + new URL(u).host + ": " + (err && err.cause && err.cause.code || err)); process.exit(3);
 };
 const api = (m, body) => j(`https://api.telegram.org/bot${TG}/${m}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body ?? {}) });
-if (mode === "getme") { const r = await api("getMe"); if (!r.ok) { console.log("FAIL"); process.exit(2); } console.log(r.result.username); }
+if (mode === "unhook") { const r = await api("deleteWebhook", { drop_pending_updates: false }); console.log(r.ok ? "ok" : "FAIL " + JSON.stringify(r)); if (!r.ok) process.exit(2); }
+else if (mode === "getme") { const r = await api("getMe"); if (!r.ok) { console.log("FAIL"); process.exit(2); } console.log(r.result.username); }
 else if (mode === "orkey") { const r = await j("https://openrouter.ai/api/v1/key", { headers: { authorization: `Bearer ${OR}` } }); if (!r.data) { console.log("FAIL"); process.exit(2); } const d = r.data; console.log(`limit=${d.limit ?? "none"} used=${d.usage ?? 0} remaining=${d.limit_remaining ?? "n/a"} free_tier=${d.is_free_tier ?? "n/a"}`); }
 else if (mode === "webhook") {
   const r = await api("setWebhook", { url: process.env.HOOK_URL, secret_token: process.env.HOOK_SECRET, allowed_updates: ["message", "edited_message", "callback_query", "poll_answer"], drop_pending_updates: true });
@@ -88,6 +89,10 @@ if [ "${1:-}" = "webhook" ]; then
   read -rsp "Paste the Telegram bot token, then Enter: " TG_TOKEN; echo
   clean_token
   BOT=$(TG_TOKEN="$TG_TOKEN" tgjs getme) || die "Telegram rejected that token."
+  # A token for the wrong bot would point that bot at this Worker and break this one (2026-10-16), so say whose it is first.
+  if [ -n "${EXPECT_BOT:-}" ] && [ "$(printf '%s' "$BOT" | tr A-Z a-z)" != "$(printf '%s' "$EXPECT_BOT" | tr A-Z a-z)" ]; then die "That token belongs to @$BOT, not @$EXPECT_BOT. Nothing was changed."; fi
+  read -rp "This token is for @$BOT. Set the webhook and command menu on it? Type yes: " OKAY
+  [ "$OKAY" = "yes" ] || die "Not confirmed. Nothing was changed."
   HOOK_SECRET=$(openssl rand -hex 24)
   # Register with Telegram first. If that fails nothing has changed, so the bot keeps working. Only then store the matching secret.
   TG_TOKEN="$TG_TOKEN" HOOK_URL="$URL_BASE/tg" HOOK_SECRET="$HOOK_SECRET" tgjs webhook | grep -q '^ok' || die "Telegram did not accept the webhook. Nothing was changed; run ./deploy.sh webhook again."
@@ -95,6 +100,22 @@ if [ "${1:-}" = "webhook" ]; then
   TG_TOKEN="$TG_TOKEN" tgjs info
   unset TG_TOKEN HOOK_SECRET
   echo "Webhook and command list refreshed for @$BOT. Nothing else changed."
+  exit 0
+fi
+
+if [ "${1:-}" = "unhook" ]; then
+  # For a bot that reads its messages by polling (getUpdates), such as Jeff: removes a webhook that was set by mistake. Nothing else changes.
+  [ -d node_modules ] || npm ci --silent
+  read -rsp "Paste the bot token to un-hook, then Enter: " TG_TOKEN; echo
+  clean_token
+  BOT=$(TG_TOKEN="$TG_TOKEN" tgjs getme) || die "Telegram rejected that token."
+  if [ -n "${EXPECT_BOT:-}" ] && [ "$(printf '%s' "$BOT" | tr A-Z a-z)" != "$(printf '%s' "$EXPECT_BOT" | tr A-Z a-z)" ]; then die "That token belongs to @$BOT, not @$EXPECT_BOT. Nothing was changed."; fi
+  read -rp "This token is for @$BOT. Remove its webhook so polling works again? Type yes: " OKAY
+  [ "$OKAY" = "yes" ] || die "Not confirmed. Nothing was changed."
+  TG_TOKEN="$TG_TOKEN" tgjs unhook | grep -q '^ok' || die "Telegram did not accept that. Nothing was changed."
+  TG_TOKEN="$TG_TOKEN" tgjs info
+  unset TG_TOKEN
+  echo "Webhook removed from @$BOT. Its own polling can read messages again. Its command menu was not touched."
   exit 0
 fi
 
