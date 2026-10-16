@@ -230,6 +230,8 @@ test("style: no em dash ever leaves Rafiki; people and hand emoji take the owner
   const { noEmDash, withSkin, Telegram } = await import("../src/telegram.ts");
   assert.equal(noEmDash("Big idea — keep it short—always."), "Big idea, keep it short, always.");
   assert.equal(noEmDash("09:00–10:00"), "09:00–10:00", "en dashes in ranges stay");
+  const { noMarkdownBold } = await import("../src/telegram.ts");
+  assert.equal(noMarkdownBold("1. **Summit** starts **tomorrow (Wed 21-10)**. 2 * 3 = 6 stays."), "1. Summit starts tomorrow (Wed 21-10). 2 * 3 = 6 stays.");
   assert.equal(withSkin("Nice 👍 and 👋🏿 and 🎉", "medium-dark"), "Nice 👍🏾 and 👋🏿 and 🎉");
   assert.equal(withSkin("👍", null), "👍");
   const calls: Record<string, unknown>[] = [];

@@ -42,6 +42,8 @@ export const MENU = {
 };
 
 /** Rafiki never sends an em dash: "a — b" becomes "a, b". En dashes in ranges (09:00–10:00) stay. */
+/** Messages here are plain text, so the model's **bold** markers would show as literal asterisks: keep the words, drop the marks. */
+export const noMarkdownBold = (t: string): string => t.replace(/\*\*([^*\n]+?)\*\*/g, "$1");
 export const noEmDash = (t: string): string => t.replace(/\s*—\s*/g, ", ").replace(/,\s*,/g, ",");
 export const SKIN: Record<string, string> = { light: "\u{1F3FB}", "medium-light": "\u{1F3FC}", medium: "\u{1F3FD}", "medium-dark": "\u{1F3FE}", dark: "\u{1F3FF}" };
 /** Give people and hand emoji the owner's skin tone, unless they already carry one. */
@@ -54,7 +56,7 @@ export class Telegram {
   /** Set per update: how to read the owner's emoji skin tone (read only when a message carries such an emoji). */
   skin?: () => Promise<string | null>;
   private async tidy(t: string): Promise<string> {
-    const out = noEmDash(t);
+    const out = noMarkdownBold(noEmDash(t));
     return this.skin && /\p{Emoji_Modifier_Base}/u.test(out) ? withSkin(out, await this.skin()) : out;
   }
   private token: string;
