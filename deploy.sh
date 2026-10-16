@@ -8,6 +8,16 @@ WR="npx --no-install wrangler -c $CFG"
 step() { printf '\n== %s\n' "$*"; }
 die() { printf '\nSTOP: %s\n' "$*" >&2; exit 1; }
 
+# A pasted token can carry a newline, a space, quotes, or the terminal's "bracketed paste" markers (ESC [200~ ... ESC [201~), any of
+# which makes Telegram reject it. Keep only the characters a bot token can contain, and say what was received (never the token).
+clean_token() {
+  TG_TOKEN=$(printf '%s' "$TG_TOKEN" | sed -E 's/\x1b\[[0-9;]*~//g' | tr -cd '0-9A-Za-z:_-')
+  case "$TG_TOKEN" in
+    [0-9]*:?*) printf 'Received %d characters in the shape of a bot token.\n' "${#TG_TOKEN}" ;;
+    *) die "That does not look like a bot token (digits, a colon, then letters and digits; $(printf '%s' "${#TG_TOKEN}") characters were received). In BotFather send /mybots, pick your bot, tap API Token, and copy exactly that line. Never tap Revoke." ;;
+  esac
+}
+
 # Node helper for every Telegram and OpenRouter call. Secrets arrive through the environment only.
 tgjs() { node --input-type=module -e '
 const mode = process.argv[1];
@@ -76,6 +86,7 @@ if [ "${1:-}" = "webhook" ]; then
   [ -d node_modules ] || npm ci --silent
   [ -n "$URL_BASE" ] || read -rp "Your Worker address (for example https://rafiki.yourname.workers.dev): " URL_BASE
   read -rsp "Paste the Telegram bot token, then Enter: " TG_TOKEN; echo
+  clean_token
   BOT=$(TG_TOKEN="$TG_TOKEN" tgjs getme) || die "Telegram rejected that token."
   HOOK_SECRET=$(openssl rand -hex 24)
   # Register with Telegram first. If that fails nothing has changed, so the bot keeps working. Only then store the matching secret.
@@ -113,6 +124,7 @@ echo "database ready ($DBID)"
 
 step "4/8 Your two keys (typing is hidden; nothing is saved to disk)"
 read -rsp "Paste the Telegram bot token from BotFather, then Enter: " TG_TOKEN; echo
+clean_token
 BOT=$(TG_TOKEN="$TG_TOKEN" tgjs getme) || die "Telegram rejected that token."
 echo "Bot found: @$BOT"
 HAVE_OR=$($WR secret list --format json 2>/dev/null | grep -c '"OPENROUTER_API_KEY"' || true)
