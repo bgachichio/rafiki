@@ -26,10 +26,15 @@ export function clockOf(t: string): { min: number | null; count: number } {
   return { min: uniq.length === 1 ? uniq[0]! : null, count: uniq.length };
 }
 
+/** A calendar date this reader does not understand ("the 28th", "28/10", "28 October", "next month", "every month"). When one is present
+ *  the text is left to the model, because a bare time of day ("9am") must never override a date: "the 28th at 9am" is not tomorrow. */
+const CALENDAR_DATE = /\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?\b|\b\d{1,2}\.\d{1,2}\.\d{2,4}\b|\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b|\bmay\s+\d|\b\d{1,2}\s+may\b|\bnext month\b|\bend of (?:the )?month\b|\b(?:monthly|every month|each month)\b|\bfirst of\b/;
+
 /** The reminder moment (epoch ms) when the text says a clear time; null when it does not, or is ambiguous. */
 export function parseWhen(text: string, now: number, off: number, morning = 540): number | null {
   const t = ` ${text.toLowerCase().replace(/[’']/g, "")} `;
   const today = startOfLocalDay(now, off);
+  if (CALENDAR_DATE.test(t)) return null;
   const clock = clockOf(t);
   if (clock.count > 1) return null;
   let part: number | null = null;

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { executeActions, validateActions } from "../src/actions.ts";
-import type { Ctx } from "../src/agent.ts";
+import { runAgent, type Ctx } from "../src/agent.ts";
 import { reminderCallback } from "../src/callbacks.ts";
+import { parseWhen } from "../src/when.ts";
 import { nextRepeat, remindersCallback, remindersPanel } from "../src/remind.ts";
 import { sweepReminders } from "../src/schedule.ts";
 import { Telegram } from "../src/telegram.ts";
-import { ENV, fakeFetch, makeDb, sent } from "./shim.ts";
+import { ENV, agentJson, fakeFetch, makeDb, sent } from "./shim.ts";
 
 const OWNER = 100200300;
 const DAY = 86400000;
@@ -127,4 +128,24 @@ test("the model can move a reminder by words (never a second one), and a deadlin
   assert.deepEqual(fees.map((r) => [r.text, r.due_ts]), [["Coming up in 1 day: School fees due", eat(2026, 10, 29, 9)], ["School fees due", eat(2026, 10, 30, 9)]]);
   const none = await executeActions(s.db, validateActions([{ type: "reschedule", match: "passport", due: "2026-10-16T18:00" }], T0, OFF), T0, OFF);
   assert.deepEqual(none, ['No open reminder matches "passport".']);
+});
+
+// Found live on 2026-10-17: "the 28th at 9am every month" was set for tomorrow, because a bare time of day overrode the date.
+test("a date the time reader does not understand is left to the model: 'the 28th at 9am' is never tomorrow", async () => {
+  for (const t of ["Remind me on the 28th at 9am every month to pay rent", "remind me 28/10 at 9am to call", "remind me on 28 October at 9 to renew", "remind me next month at 9am to pay", "remind me on the 1st of each month at 8am", "remind me at 9am on 2026-10-28"]) {
+    assert.equal(parseWhen(t, T0, OFF), null, t);
+  }
+  // times and days it does understand are unchanged, including "9.30am", which is a time and not a date
+  assert.equal(parseWhen("remind me tomorrow at 9.30am to call", T0, OFF), eat(2026, 10, 17, 9, 30));
+  assert.equal(parseWhen("remind me at 5pm to call", T0, OFF), eat(2026, 10, 16, 17));
+  assert.equal(parseWhen("remind me in 2 days, morning hours", T0, OFF), eat(2026, 10, 18, 9));
+});
+
+test("end to end: a monthly reminder the model dates to the 28th stays on the 28th, with the 28 kept as its monthly day", async () => {
+  const s = setup();
+  const fx = fakeFetch([agentJson({ reply: "Set.", actions: [{ type: "reminder", text: "Pay rent", due: "2026-10-28T09:00", repeat: "monthly", kind: "deadline" }], buttons: [] })]);
+  const ctx: Ctx = { db: s.db, env: ENV, f: fx.f, now: T0, off: OFF };
+  await runAgent(ctx, "Remind me on the 28th at 9am every month to pay rent");
+  const rows = all(s);
+  assert.deepEqual(rows.map((r) => [r.text, r.due_ts, r.repeat]), [["Coming up in 1 day: Pay rent", eat(2026, 10, 27, 9), "none"], ["Pay rent", eat(2026, 10, 28, 9), "monthly:28"]]);
 });
