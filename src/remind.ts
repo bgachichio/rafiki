@@ -39,6 +39,12 @@ function stepOnce(t: number, repeat: string, off: number): number {
 
 export const repeatText = (r: string): string => (r === "daily" ? "every day" : r === "weekly" ? "every week" : r === "weekdays" ? "every weekday" : r.startsWith("monthly") ? "every month" : "");
 
+/** A reminder with a warning ahead has separate "Coming up ...: <text>" copies. Cancelling or closing the reminder must take them too,
+ *  or the warning still fires for something the owner has cancelled. */
+export async function dropHeadsUps(db: Db, text: string): Promise<void> {
+  await db.prepare("UPDATE reminders SET state = 'dropped' WHERE state = 'open' AND text LIKE 'Coming up %' AND substr(text, instr(text, ': ') + 2) = ?").bind(text).run();
+}
+
 interface RepRow { id: number; text: string; due_ts: number; repeat: string }
 
 /** Make sure a repeating reminder has its next occurrence waiting, whether or not the owner ever taps Done. It is created when
@@ -75,7 +81,12 @@ export async function rescheduleMatching(db: Db, match: string, dueMs: number): 
   const rows = (await db.prepare("SELECT id, text FROM reminders WHERE state IN ('open', 'flagged', 'awaiting') AND text NOT LIKE 'Coming up %' ORDER BY due_ts LIMIT 60").bind().all<{ id: number; text: string }>()).results;
   const hits = rows.filter((r) => { const w = new Set(WORD(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); });
   if (hits.length > 1) return { moved: [], ambiguous: hits.map((h) => h.text) }; // a vague word moves nothing
-  for (const h of hits) await db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(dueMs, h.id).run();
+  for (const h of hits) {
+    const old = await db.prepare("SELECT due_ts FROM reminders WHERE id = ?").bind(h.id).first<{ due_ts: number }>();
+    await db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(dueMs, h.id).run();
+    // The warning copies move by the same amount, so they still come the same time ahead of the new moment.
+    if (old) await db.prepare("UPDATE reminders SET due_ts = due_ts + ? WHERE state = 'open' AND text LIKE 'Coming up %' AND substr(text, instr(text, ': ') + 2) = ?").bind(dueMs - Number(old.due_ts), h.text).run();
+  }
   return { moved: hits.map((h) => h.text), ambiguous: [] };
 }
 
@@ -96,6 +107,7 @@ export async function remindersCallback(ctx: Ctx, tg: Telegram, chatId: number, 
   if (m[1] === "x") {
     const row = await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE id = ? AND state IN ('open', 'flagged', 'awaiting') RETURNING text, repeat").bind(id).first<{ text: string; repeat: string }>();
     if (row && row.repeat !== "none") await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE text = ? AND repeat = ? AND state = 'open'").bind(row.text, row.repeat).run(); // the waiting next occurrence goes too
+    if (row) await dropHeadsUps(ctx.db, row.text);
     await tg.send(chatId, row ? `Cancelled: ${row.text}${row.repeat !== "none" ? ` (and its repeat)` : ""}.` : "That reminder is already closed.");
   } else {
     const at = await snoozeTarget(ctx, m[1] === "t" ? "tomorrow" : "week");

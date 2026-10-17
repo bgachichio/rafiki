@@ -2,7 +2,7 @@ import type { Ctx } from "./agent.ts";
 import { setSetting } from "./db.ts";
 import { calendarChoices, syncCalendar } from "./calendar.ts";
 import { removeFeed, syncIcal } from "./ical.ts";
-import { ensureNext, snoozeTarget } from "./remind.ts";
+import { dropHeadsUps, ensureNext, snoozeTarget } from "./remind.ts";
 import type { Telegram } from "./telegram.ts";
 import { fmtDate, fmtTime } from "./time.ts";
 import { disconnect } from "./slash.ts";
@@ -56,6 +56,7 @@ export async function reminderCallback(ctx: Ctx, tg: Telegram, chatId: number, d
   } else if (m[1] === "x") {
     await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE id = ?").bind(id).run();
     if (r.repeat !== "none") await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE text = ? AND repeat = ? AND state = 'open'").bind(r.text, r.repeat).run(); // the waiting next occurrence goes too
+    await dropHeadsUps(ctx.db, r.text);
     await tg.send(chatId, r.repeat !== "none" ? `Stopped: ${r.text}. It will not repeat.` : `Cancelled: ${r.text}.`);
   } else {
     const at = await snoozeTarget(ctx, m[1] === "t" ? "tomorrow" : "week");

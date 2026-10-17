@@ -149,3 +149,22 @@ test("end to end: a monthly reminder the model dates to the 28th stays on the 28
   const rows = all(s);
   assert.deepEqual(rows.map((r) => [r.text, r.due_ts, r.repeat]), [["Coming up in 1 day: Pay rent", eat(2026, 10, 27, 9), "none"], ["Pay rent", eat(2026, 10, 28, 9), "monthly:28"]]);
 });
+
+test("cancelling or closing a reminder takes its warning copies too; moving it moves them by the same amount", async () => {
+  const s = setup();
+  const run = async (): Promise<void> => { await executeActions(s.db, validateActions([{ type: "reminder", text: "Pay the levy", due: "2026-10-30T09:00", repeat: "none", kind: "deadline" }], T0, OFF), T0, OFF); };
+  await run();
+  const warn = () => all(s).filter((r) => r.text.startsWith("Coming up"));
+  assert.equal(warn().length, 1);
+  const main = all(s).find((r) => r.text === "Pay the levy")!;
+  // move the reminder by an hour: the warning moves with it
+  await executeActions(s.db, validateActions([{ type: "reschedule", match: "levy", due: "2026-10-30T10:00" }], T0, OFF), T0, OFF);
+  assert.equal(warn()[0]!.due_ts, eat(2026, 10, 29, 10));
+  // cancel with the button: the warning is dropped, not left to fire
+  await reminderCallback(s.ctx(), s.tg, OWNER, `r:x:${main.id}`);
+  assert.equal(warn().filter((r) => r.state === "open").length, 0);
+  // the close action does the same
+  await run();
+  await executeActions(s.db, validateActions([{ type: "close", kind: "reminder", match: "levy", state: "dropped" }], T0, OFF), T0, OFF);
+  assert.equal(all(s).filter((r) => r.state === "open").length, 0, "nothing of it is left open");
+});

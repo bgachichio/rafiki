@@ -40,7 +40,7 @@ export type CloseKind = "task" | "goal" | "reminder";
 const TABLE: Record<CloseKind, { sql: string; open: string }> = {
   task: { sql: "tasks", open: "state = 'open'" },
   goal: { sql: "goals", open: "state = 'open'" },
-  reminder: { sql: "reminders", open: "state IN ('open', 'flagged', 'awaiting')" },
+  reminder: { sql: "reminders", open: "state IN ('open', 'flagged', 'awaiting') AND text NOT LIKE 'Coming up %'" }, // warning copies are not matches of their own
 };
 
 /** Close the one open task, goal or reminder that matches the owner's words (all distinctive words present, or the phrase
@@ -54,7 +54,10 @@ export async function closeMatchingDetailed(db: Db, kind: CloseKind, match: stri
   const rows = (await db.prepare(`SELECT id, text FROM ${t.sql} WHERE ${t.open} ORDER BY id LIMIT 60`).bind().all<{ id: number; text: string }>()).results;
   const hits = rows.filter((r) => { const w = new Set(words(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); });
   if (hits.length > 1) return { closed: [], ambiguous: hits.map((h) => h.text) };
-  for (const h of hits) await db.prepare(`UPDATE ${t.sql} SET state = ? WHERE id = ?`).bind(state, h.id).run();
+  for (const h of hits) {
+    await db.prepare(`UPDATE ${t.sql} SET state = ? WHERE id = ?`).bind(state, h.id).run();
+    if (kind === "reminder") await db.prepare("UPDATE reminders SET state = ? WHERE state = 'open' AND text LIKE 'Coming up %' AND substr(text, instr(text, ': ') + 2) = ?").bind(state, h.text).run(); // its warning copies close with it
+  }
   return { closed: hits.map((h) => h.text), ambiguous: [] };
 }
 export async function closeMatching(db: Db, kind: CloseKind, match: string, state: "done" | "dropped"): Promise<string[]> {
