@@ -2,9 +2,9 @@ import type { Ctx } from "./agent.ts";
 import { setSetting } from "./db.ts";
 import { calendarChoices, syncCalendar } from "./calendar.ts";
 import { removeFeed, syncIcal } from "./ical.ts";
-import { loadPolicy } from "./policy.ts";
+import { ensureNext, snoozeTarget } from "./remind.ts";
 import type { Telegram } from "./telegram.ts";
-import { fmtTime, parseHM, startOfLocalDay } from "./time.ts";
+import { fmtDate, fmtTime } from "./time.ts";
 import { disconnect } from "./slash.ts";
 
 // Button taps for calendars and reminders.
@@ -40,32 +40,27 @@ export async function calendarCallback(ctx: Ctx, tg: Telegram, chatId: number, d
 }
 
 export async function reminderCallback(ctx: Ctx, tg: Telegram, chatId: number, data: string): Promise<boolean> {
-  const m = /^r:([dst]):(\d+)$/.exec(data);
+  const m = /^r:([dstnx]):(\d+)$/.exec(data);
   if (!m) return false;
-  {
-    const id = Number(m[2]);
-    const r = await ctx.db.prepare("SELECT id, text, due_ts, repeat FROM reminders WHERE id = ?").bind(id).first<{ id: number; text: string; due_ts: number; repeat: string }>();
-    if (!r) { await tg.send(chatId, "I can't find that reminder."); return true; }
-    if (m[1] === "d") {
-      await ctx.db.prepare("UPDATE reminders SET state = 'done' WHERE id = ?").bind(id).run();
-      await ctx.db.prepare("UPDATE focus SET state = 'done', done_ts = ? WHERE ref = ? AND state = 'open'").bind(ctx.now, `r:${id}`).run(); // finishing the reminder finishes the One
-      if (r.repeat === "daily" || r.repeat === "weekly") {
-        const step = r.repeat === "daily" ? 86400000 : 7 * 86400000;
-        let next = r.due_ts + step;
-        while (next <= ctx.now) next += step;
-        const nr = await ctx.db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(ctx.now, r.text, next, r.repeat).first<{ id: number }>();
-        await ctx.db.prepare("INSERT OR IGNORE INTO reminder_attach (reminder_id, kind, file_id, name) SELECT ?, kind, file_id, name FROM reminder_attach WHERE reminder_id = ?").bind(Number(nr?.id), id).run();
-      }
-      await tg.send(chatId, "Done.");
-    } else if (m[1] === "s") {
-      await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(ctx.now + 3600000, id).run();
-      await tg.send(chatId, "I'll remind you again in an hour.");
-    } else {
-      const morning = parseHM((await loadPolicy(ctx.db)).policy.morning) ?? 540;
-      const tomorrow9 = startOfLocalDay(ctx.now, ctx.off) + 86400000 + morning * 60000;
-      await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(tomorrow9, id).run();
-      await tg.send(chatId, `Moved to tomorrow ${fmtTime(tomorrow9, ctx.off)}.`);
-    }
+  const id = Number(m[2]);
+  const r = await ctx.db.prepare("SELECT id, text, due_ts, repeat FROM reminders WHERE id = ?").bind(id).first<{ id: number; text: string; due_ts: number; repeat: string }>();
+  if (!r) { await tg.send(chatId, "I can't find that reminder."); return true; }
+  if (m[1] === "d") {
+    await ctx.db.prepare("UPDATE reminders SET state = 'done' WHERE id = ?").bind(id).run();
+    await ctx.db.prepare("UPDATE focus SET state = 'done', done_ts = ? WHERE ref = ? AND state = 'open'").bind(ctx.now, `r:${id}`).run(); // finishing the reminder finishes the One
+    if (r.repeat !== "none") await ensureNext(ctx.db, r, ctx.now, ctx.off); // already waiting if it was created when this one was sent
+    await tg.send(chatId, "Done.");
+  } else if (m[1] === "s") {
+    await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(ctx.now + 3600000, id).run();
+    await tg.send(chatId, "I'll remind you again in an hour.");
+  } else if (m[1] === "x") {
+    await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE id = ?").bind(id).run();
+    if (r.repeat !== "none") await ctx.db.prepare("UPDATE reminders SET state = 'dropped' WHERE text = ? AND repeat = ? AND state = 'open'").bind(r.text, r.repeat).run(); // the waiting next occurrence goes too
+    await tg.send(chatId, r.repeat !== "none" ? `Stopped: ${r.text}. It will not repeat.` : `Cancelled: ${r.text}.`);
+  } else {
+    const at = await snoozeTarget(ctx, m[1] === "t" ? "tomorrow" : "week");
+    await ctx.db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(at, id).run();
+    await tg.send(chatId, m[1] === "t" ? `Moved to tomorrow ${fmtTime(at, ctx.off)}.` : `Moved to ${fmtDate(at, ctx.off)} ${fmtTime(at, ctx.off)}.`);
   }
   return true;
 }

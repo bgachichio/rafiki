@@ -6,6 +6,7 @@ import { canNudge, isPaused, logOut } from "./budget.ts";
 import { feedbackRow } from "./feedback.ts";
 import { candidates, FOCUS_BUTTONS, focusLines, todays, weekScore } from "./focus.ts";
 import { maybeGoalReview, staleNudge } from "./panels.ts";
+import { ensureNext } from "./remind.ts";
 import { getSetting, setSetting } from "./db.ts";
 import { loadPolicy, recordSignal } from "./policy.ts";
 import { loadPrefs } from "./prefs.ts";
@@ -42,12 +43,13 @@ export async function sweepReminders(ctx: Ctx, tg: Telegram, chatId: number): Pr
   for (const r of due.results) {
     if (quiet && r.chase_count > 0) continue; // first delivery always goes out; chases wait for the morning
     const label = r.chase_count > 0 ? `Still open: ${r.text}` : `Reminder: ${r.text}`;
-    const rows = [[{ text: "Done", data: `r:d:${r.id}` }, { text: "In 1 hour", data: `r:s:${r.id}` }, { text: "Tomorrow", data: `r:t:${r.id}` }]];
+    const rows = [[{ text: "Done", data: `r:d:${r.id}` }, { text: "In 1 hour", data: `r:s:${r.id}` }, { text: "Tomorrow", data: `r:t:${r.id}` }], [{ text: "Next week", data: `r:n:${r.id}` }, { text: r.repeat !== "none" ? "Stop repeating" : "Cancel", data: `r:x:${r.id}` }]];
     if (r.chase_count > 0) rows.push(feedbackRow("chase")); // a reminder you set is not rated; a chase is a nudge
     // The attachment comes back with the first delivery, as one message: the file, the reminder as its caption, and the buttons.
     // If Telegram refuses the stored file, the plain reminder still goes out.
     const att = r.a_kind && r.a_file && r.chase_count === 0 ? { kind: r.a_kind as Attach["kind"], fileId: r.a_file, name: r.a_name ?? "file" } : null;
     if (!att || !(await tg.sendStored(chatId, att, label, rows))) await tg.send(chatId, label, rows);
+    if (r.repeat !== "none" && r.chase_count === 0) await ensureNext(ctx.db, r, ctx.now, ctx.off); // a repeat carries on even if Done is never tapped
     const next = afterSend(r, ctx.now);
     await ctx.db.prepare("UPDATE reminders SET state = ?, due_ts = ?, chase_count = ?, last_sent_ts = ? WHERE id = ?").bind(next.state, next.due_ts, next.chase_count, ctx.now, r.id).run();
     if (next.state === "flagged") await recordSignal(ctx.db, ctx.now, "chase_ignored", String(r.id));

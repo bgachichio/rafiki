@@ -24,6 +24,7 @@ import { calendarCallback, reminderCallback } from "./callbacks.ts";
 import { keepRead, linkToRead, readUrl } from "./reader.ts";
 import { focusCallback, setOwnFocus } from "./focus.ts";
 import { panelCallback } from "./panels.ts";
+import { remindersCallback } from "./remind.ts";
 import { codeCallback } from "./bridge.ts";
 import { zapCallback } from "./zapier.ts";
 import { handsCallback, nextSteps, takeToken } from "./hands.ts";
@@ -133,6 +134,7 @@ async function handleCallback(ctx: Ctx, tg: Telegram, cb: TgCallback, chatId: nu
   if (data === "er:cancel") { await setSetting(ctx.db, "erase_wait", ""); await tg.send(chatId, "Cancelled. Nothing was erased."); return; }
   if (await focusCallback(ctx, tg, chatId, data)) return;
   if (await panelCallback(ctx, tg, chatId, data)) return;
+  if (await remindersCallback(ctx, tg, chatId, data)) return;
   if (await zapCallback(ctx, tg, chatId, data)) return;
   if (await handsCallback(ctx, tg, chatId, data)) return;
   if (await codeCallback(ctx, tg, chatId, data)) return;

@@ -4,11 +4,13 @@ import { mayExecute } from "./gates.ts";
 import { addFact, isCategory, isHedged, type Category } from "./memory.ts";
 import { DEFAULT_POLICY, type Policy } from "./policy.ts";
 import { closeMatching, type CloseKind } from "./lifecycle.ts";
+import { isRepeat, rescheduleMatching, type Repeat } from "./remind.ts";
 import { feeFor, kes, type Tier } from "./spend.ts";
 import { fmtDateTime, parseHM, parseLocalIso } from "./time.ts";
 
 export type Action =
-  | { type: "reminder"; text: string; dueMs: number; repeat: "none" | "daily" | "weekly"; kind: "event" | "task" }
+  | { type: "reminder"; text: string; dueMs: number; repeat: Repeat; kind: "event" | "task" | "deadline" }
+  | { type: "reschedule"; match: string; dueMs: number }
   | { type: "task_add"; text: string }
   | { type: "close"; kind: CloseKind; match: string; state: "done" | "dropped" }
   | { type: "goal_add"; text: string; metric: string | null; target: string | null; by: string | null }
@@ -39,8 +41,14 @@ export function validateActions(raw: unknown, now: number, off: number): Action[
         const text = str(o.text, 300);
         const due = typeof o.due === "string" ? parseLocalIso(o.due, off) : null;
         if (!text || due === null || due < now - 60000) break;
-        const repeat = o.repeat === "daily" || o.repeat === "weekly" ? o.repeat : "none";
-        out.push({ type, text, dueMs: due, repeat, kind: o.kind === "event" ? "event" : "task" });
+        const repeat: Repeat = isRepeat(o.repeat) ? o.repeat : "none";
+        out.push({ type, text, dueMs: due, repeat, kind: o.kind === "event" ? "event" : o.kind === "deadline" ? "deadline" : "task" });
+        break;
+      }
+      case "reschedule": {
+        const match = str(o.match, 120);
+        const due = typeof o.due === "string" ? parseLocalIso(o.due, off) : null;
+        if (match && due !== null && due > now + 60000) out.push({ type, match, dueMs: due });
         break;
       }
       case "task_add": {
@@ -126,7 +134,8 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
     switch (a.type) {
       case "reminder": {
         // An event gets the owner's lead times (a heads-up each, sent once); a task gets one reminder with the owner's chase rules.
-        const leads = a.kind === "event" ? policy.eventLeads : [0];
+        // A deadline (a bill, a fee, a filing) also gets a warning a day ahead; a plain task gets one reminder.
+        const leads = a.kind === "event" ? policy.eventLeads : a.kind === "deadline" ? [1440, 0] : [0];
         const slots = leads.map((l) => ({ lead: l, due: a.dueMs - l * 60000 })).filter((x) => x.lead === 0 || x.due > now + 60000);
         if (!slots.some((x) => x.lead === 0) && !slots.length) slots.push({ lead: 0, due: a.dueMs });
         for (const x of slots) {
@@ -144,6 +153,11 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         await db.prepare("INSERT INTO tasks (ts, text) VALUES (?, ?)").bind(now, a.text).run();
         done.push(`Task added: ${a.text}`);
         break;
+      case "reschedule": {
+        const hit = await rescheduleMatching(db, a.match, a.dueMs);
+        done.push(hit.length ? `Moved to ${fmtDateTime(a.dueMs, off)}: ${hit.join("; ")}` : `No open reminder matches "${a.match}".`);
+        break;
+      }
       case "close": {
         const hit = await closeMatching(db, a.kind, a.match, a.state);
         done.push(hit.length ? `${a.state === "done" ? "Marked done" : "Closed for good"}: ${hit.join("; ")}` : `No open ${a.kind} matches "${a.match}".`);

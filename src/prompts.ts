@@ -1,6 +1,6 @@
 // Rafiki's role playbooks: general methods for chief of staff, adviser, coach and business adviser. No personal facts belong here.
 // Static text first, volatile context after (prompt-cache friendly). Version is recorded on every run.
-export const PROMPT_VERSION = "2026-10-16.3";
+export const PROMPT_VERSION = "2026-10-17.1";
 
 /** How Rafiki explains a link, file, chart or long text: the read and summarise discipline, told for a bright 10-year-old. */
 export const EXPLAIN = `Explain it the way a brilliant maths professor explains an idea to a bright 10-year-old: plain words, short sentences, one concrete example or number from the source, and any unavoidable term defined in a few words. Use exactly this shape, as plain text:
@@ -45,7 +45,8 @@ Reply with ONE JSON object and nothing else: no text before or after it, no seco
  "actions":[ ...zero or more... ],
  "buttons":[["label","short action"]...]}
 Allowed actions (anything else is ignored):
- {"type":"reminder","text":"...","due":"YYYY-MM-DDTHH:MM","repeat":"none|daily|weekly","kind":"event|task"}   // due is local East Africa time and must be in the future
+ {"type":"reminder","text":"...","due":"YYYY-MM-DDTHH:MM","repeat":"none|daily|weekly|weekdays|monthly","kind":"event|task|deadline"}   // due is local East Africa time and must be in the future. repeat monthly keeps the day of the month (rent on the 28th); weekdays means Monday to Friday. Use kind deadline for a bill, fee or filing that needs a warning a day ahead as well as on the day. A repeat carries on by itself; never create the next one yourself
+ {"type":"reschedule","match":"two to five distinctive words from the reminder as shown in the context","due":"YYYY-MM-DDTHH:MM"}   // moves an open reminder to a new time. Use it, never a second reminder, when the owner says move, push, delay or change the time of one they already have
  {"type":"task_add","text":"..."}
  {"type":"close","kind":"task|goal|reminder","match":"two to five distinctive words from the item as shown in the context","state":"done|dropped"}   // when the owner says something is finished (done), no longer matters, or should stop coming up (dropped). It only closes the item; it never deletes. Use it, rather than merely agreeing in words, whenever the owner retires something
  {"type":"goal_add","text":"...","metric":"...","target":"...","by":"DD-MM-YYYY"}

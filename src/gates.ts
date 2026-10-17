@@ -7,6 +7,7 @@ export type Gate = "G0" | "G1" | "G2" | "G3" | "G4";
 export const ACTION_GATE: Readonly<Record<string, Gate>> = {
   reminder: "G1",
   task_add: "G1",
+  reschedule: "G1", // moves an open reminder to a new time; deletes nothing
   close: "G1", // changes a task, goal or reminder to done or dropped; deletes nothing
   goal_add: "G1",
   ledger_set: "G1",

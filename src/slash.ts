@@ -17,6 +17,7 @@ import { startMediaCheck } from "./mediacheck.ts";
 import { runSelfTest, selfTestText } from "./selftest.ts";
 import { setOwnFocus } from "./focus.ts";
 import { goalsPanel, tasksPanel } from "./panels.ts";
+import { remindersPanel } from "./remind.ts";
 import { connectHub, emailCommand, inboxCommand } from "./connections.ts";
 import { codeCommand } from "./bridge.ts";
 import { notesCommand } from "./notes.ts";
@@ -35,7 +36,7 @@ const HELP = [
   "- what should I do first today?",
   "- send me a voice note, a photo, a file or your location",
   "- advise me on pricing for X",
-  "Commands: /one /today /tasks /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /inbox /email /code /notes /hands /abilities /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
+  "Commands: /one /today /tasks /reminders /agenda /memory /search /remember /forget /rules /check /export /erase /limits /about /selftest /calendars /memory /preferences /skills /import /model /connect /inbox /email /code /notes /hands /abilities /place /where /brief /goals /ledger /money /fees /settings /cap /log /why /pause /resume /menu",
 ].join("\n");
 
 export async function recordSpend(ctx: Ctx, tg: Telegram, chatId: number, text: string): Promise<boolean> {
@@ -220,6 +221,7 @@ async function lifeCommand(ctx: Ctx, tg: Telegram, chatId: number, cmd: string, 
     case "/today": { await tg.typing(chatId); const r = await runAgent(ctx, "What are my top three for today, and which do I do first?"); await tg.send(chatId, r.text, r.buttons); return true; }
     case "/goals": await goalsPanel(ctx, tg, chatId); return true;
     case "/tasks": await tasksPanel(ctx, tg, chatId); return true;
+    case "/reminders": await remindersPanel(ctx, tg, chatId); return true;
     case "/ledger": {
       const l = await ctx.db.prepare("SELECT prospect, rung, next_ask FROM ledger ORDER BY rung DESC, last_move_ts DESC").bind().all<{ prospect: string; rung: number; next_ask: string | null }>();
       await tg.send(chatId, l.results.length ? "Customer ledger (rung 5 paid, 4 deposit, 3 commitment, 2 interest, 1 applause, 0 not a problem)\n" + l.results.map((x) => `- ${x.prospect}: rung ${x.rung}${x.next_ask ? `, next: ${x.next_ask}` : ""}`).join("\n") : "The ledger is empty. Tell me who you'll approach and what you'll ask for.");
