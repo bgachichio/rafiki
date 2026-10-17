@@ -79,6 +79,16 @@ export async function handleSetup(req: Request, env: SetupEnv, db: Db, f: Fetch)
   const tg = new Telegram(env.TELEGRAM_BOT_TOKEN, f);
   const me = await tg.api("getMe", {});
   const bot = me.ok ? (me.result as { username?: string; first_name?: string }) : null;
+  // Name the bot before connecting anything. A token for a different bot (one the owner already has) would point that bot at this
+  // Worker, so the owner confirms once; running setup again for the same bot needs no second confirmation.
+  if (bot?.username) {
+    const known = String((await getSetting(db, "bot_username")) ?? "").toLowerCase();
+    const said = String(data?.get("confirm") ?? "").toLowerCase();
+    const name = bot.username.toLowerCase();
+    if (known !== name && said !== name) {
+      return page("Is this your bot?", `<div class="card"><p>This setup is about to connect to <b>@${esc(bot.username)}</b>${bot.first_name ? ` (${esc(bot.first_name)})` : ""}.</p><p>Is that the bot you just made in BotFather? If you do not recognise it, the token you pasted into Cloudflare belongs to a different bot. Do not continue: copy the right token from BotFather and redeploy.</p><form method="post" action="/setup"><input type="hidden" name="word" value="${esc(word)}"><input type="hidden" name="confirm" value="${esc(bot.username)}"><button>Yes, that is my bot</button></form></div>`);
+    }
+  }
   steps.push({ ok: !!bot, text: bot ? `Telegram accepted your bot token (@${bot.username})` : "Telegram did not accept the bot token. Copy it again from BotFather and redeploy." });
   const orOk = env.OPENROUTER_API_KEY ? await f("https://openrouter.ai/api/v1/key", { headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}` } }).then((r) => r.ok).catch(() => false) : false;
   steps.push({ ok: orOk, text: orOk ? "OpenRouter accepted your AI key" : "OpenRouter did not accept the AI key. Create a new one at openrouter.ai/settings/keys and redeploy." });

@@ -6,7 +6,7 @@ import { COMMANDS } from "../src/commands.ts";
 import { SCHEMA_SQL } from "../src/schema.gen.ts";
 import { MARK_PNG_BASE64 } from "../src/assets/mark.gen.ts";
 import { SCHEMA_STATEMENTS, ensureSchema, splitSql, webhookSecret } from "../src/setup.ts";
-import { getSetting } from "../src/db.ts";
+import { getSetting, setSetting } from "../src/db.ts";
 import { ENV, fakeFetch, makeDb } from "./shim.ts";
 import { DatabaseSync } from "node:sqlite";
 
@@ -72,7 +72,7 @@ test("/setup: the right word registers the webhook, commands, credits and photo,
   const realFetch = globalThis.fetch;
   globalThis.fetch = fx.f;
   try {
-    const res = await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db), ctx);
+    const res = await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE, confirm: "test_rafiki_bot" }), env(db), ctx);
     const html = await res.text();
     assert.equal(res.status, 200);
     assert.match(html, /Your Rafiki is ready/);
@@ -91,11 +91,38 @@ test("/setup: the right word registers the webhook, commands, credits and photo,
     assert.ok(calls.some((c) => c.method === "setMyProfilePhoto"));
     assert.equal(await getSetting(db, "public_url"), "https://rafiki.example.workers.dev");
     assert.equal(await getSetting(db, "bot_name"), "Test Rafiki");
-    // running it again refreshes everything but does not re-upload the photo
+    // running it again refreshes everything but does not re-upload the photo, and the same bot needs no second confirmation
     calls.length = 0;
     await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db), ctx);
     assert.ok(!calls.some((c) => c.method === "setMyProfilePhoto"));
     assert.ok(calls.some((c) => c.method === "setWebhook"));
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("/setup: the bot is named and confirmed before anything is connected; a different bot than the one set up before asks again", async () => {
+  const db = makeDb();
+  const fx = fakeFetch([]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = fx.f;
+  try {
+    const res = await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db), ctx);
+    const html = await res.text();
+    assert.match(html, /Is this your bot\?/);
+    assert.match(html, /<b>@test_rafiki_bot<\/b>/);
+    assert.match(html, /Yes, that is my bot/);
+    assert.ok(!fx.tg.some((c) => c.method === "setWebhook" || c.method === "setMyCommands" || c.method === "setMyProfilePhoto"), "nothing is connected before the owner confirms");
+    assert.equal(await getSetting(db, "bot_username"), null, "nothing is stored either");
+    assert.ok(!html.includes(OWN.TELEGRAM_BOT_TOKEN), "no token in the page");
+    await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE, confirm: "test_rafiki_bot" }), env(db), ctx);
+    assert.equal(await getSetting(db, "bot_username"), "test_rafiki_bot", "the confirmed bot is remembered");
+    // The same bot again: no second question. A different bot than the one set up before: asked again, nothing connected.
+    fx.tg.length = 0;
+    assert.match(await (await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db), ctx)).text(), /Your Rafiki is ready/);
+    await setSetting(db, "bot_username", "some_other_bot");
+    fx.tg.length = 0;
+    const again = await (await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db), ctx)).text();
+    assert.match(again, /Is this your bot\?/);
+    assert.ok(!fx.tg.some((c) => c.method === "setWebhook"), "no webhook is set for a bot that was not confirmed");
   } finally { globalThis.fetch = realFetch; }
 });
 
@@ -105,7 +132,7 @@ test("/setup: a bad AI key is reported plainly and the page does not claim succe
   const realFetch = globalThis.fetch;
   globalThis.fetch = fx.f;
   try {
-    const res = await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE }), env(db, { ...OWN, OPENROUTER_API_KEY: "nope" }), ctx);
+    const res = await worker.fetch(post("/setup", { word: OWN.CLAIM_CODE, confirm: "test_rafiki_bot" }), env(db, { ...OWN, OPENROUTER_API_KEY: "nope" }), ctx);
     const html = await res.text();
     assert.match(html, /OpenRouter did not accept the AI key/);
     assert.match(html, /Nearly there/);
