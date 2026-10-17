@@ -168,7 +168,7 @@ test("text from outside (mail, automations) cannot close anything", async () => 
   const { ACTION_GATE } = await import("../src/gates.ts");
   assert.equal(ACTION_GATE.close, "G1");
   const src = (await import("node:fs")).readFileSync(new URL("../src/agent.ts", import.meta.url), "utf8");
-  assert.ok(/!ctx\.untrusted \|\| a\.type === "reminder" \|\| a\.type === "task_add" \|\| a\.type === "calendar_link"/.test(src), "outside text is limited to reminders, tasks and calendar links; close is not among them");
+  assert.ok(/!ctx\.untrusted \|\| outsideOk\(a\)/.test(src) && /a\.type === "reminder" \|\| a\.type === "task_add" \|\| a\.type === "calendar_link" \|\|/.test(src), "outside text is limited to reminders, tasks and calendar links; close is not among them");
 });
 
 test("the model is told what is stale: a lapsed goal and a parked task are marked in its context", async () => {

@@ -21,7 +21,7 @@ import { NOTES_WORDS, notesContext, searchNotes } from "./notes.ts";
 import { catalogueContext, HANDS_WORDS, loadCatalogue, proposeZap } from "./zapier.ts";
 
 export interface AgentEnv extends LlmEnv { DEFAULT_CAP_USD: string; CONFIDENTIAL_TERMS?: string }
-export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null; untrusted?: boolean; noSpend?: boolean }
+export interface Ctx { db: Db; env: AgentEnv & GoogleEnv & { MEDIA_SCALE?: string; MODEL_MEDIA?: string }; f: Fetch; now: number; off: number; tg?: Telegram; chatId?: number; msgId?: number; attach?: Attach | null; untrusted?: boolean; source?: string; outsideAllow?: string[]; noSpend?: boolean }
 export interface AgentReply { text: string; buttons?: Button[][]; role: string }
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -131,6 +131,9 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
   // What the owner has closed or finished: named to the model as history, and what restates it is taken out below.
   const closed = closedItems ?? await loadClosed(db);
   const closedTexts = closed.map((c) => c.text);
+  // A finished job does not make a lasting fact untrue (the school fees were paid; they are still 150K), so facts are hidden only
+  // when the owner DROPPED the thing they restate. Summaries, recall and earlier replies are hidden for both.
+  const droppedTexts = closed.filter((c) => c.state === "dropped").map((c) => c.text);
 
   const by = (k: string): CtxRow[] => rows.results.filter((r) => r.k === k);
   const lines: string[] = [`NOW: ${fmtDateTime(now, off)} (East Africa Time).`];
@@ -141,7 +144,7 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
   if (instr.length) lines.push("STANDING INSTRUCTIONS (the owner's own rules for working with them): " + instr.map((i) => clip(i.a, 200)).join(" | "));
   const skills = by("skill");
   if (skills.length) lines.push("SKILLS THE OWNER GAVE YOU (relevant sections are added below when a question needs them): " + skills.map((k) => `${k.a}: ${clip(k.b, 80)}`).join(" | "));
-  const facts = by("fact").filter((f) => !(FILTERED_FACT_CATEGORIES.has(f.b ?? "") && retiredBy(f.a ?? "", closedTexts)));
+  const facts = by("fact").filter((f) => !(FILTERED_FACT_CATEGORIES.has(f.b ?? "") && retiredBy(f.a ?? "", droppedTexts)));
   if (facts.length) lines.push("OWNER FACTS (permanent memory): " + facts.map((f) => `[${f.b}] ${clip(f.a, 160)}`).join(" | "));
   const goals = by("goal");
   if (goals.length) lines.push("GOALS: " + goals.map((g) => `${clip(g.a)}${g.b ? ` (${g.b})` : ""}${g.c ? ` by ${g.c}` : ""}${isLapsed(g.c, now, off) ? " [DATE PASSED: not a live priority, never push it; if it comes up, ask once whether it is done, moved or closed]" : ""}`).join(" | "));
@@ -175,6 +178,7 @@ export async function buildContext(db: Db, now: number, off: number, includeMone
   return lines.join("\n").slice(0, 12000);
 }
 
+const LEFT_ALONE: Record<string, string> = { note: "a saved fact", set_setting: "a setting change", spend: "a spend", goal_add: "a goal", ledger_set: "a ledger entry", close: "closing an item", reschedule: "moving a reminder", zap: "an action in your apps" };
 const DEEP = /\b(advis\w*|should i|decision|pricing|price|strategy|cash ?flow|forecast|compare|trade-?off|pre-?mortem|invest\w*|budget|plan my|unit economics|break-?even)\b/i;
 
 function say(text: string): string { return `say:${text}`.slice(0, 64); }
@@ -239,10 +243,15 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
     if (r.truncated) traceExtra.truncated = true;
     const p = parseAgentJson(r.text);
     roleKey = p.role;
-    const io = ctx.tg && ctx.chatId ? { calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); }, attach: ctx.attach ?? undefined } : { attach: ctx.attach ?? undefined };
+    const io = ctx.tg && ctx.chatId ? { source: ctx.untrusted ? ctx.source : undefined, calendarLink: async (e: LinkEvent) => { await ctx.tg!.send(ctx.chatId!, `Add to your calendar: ${e.title}, ${fmtDateTime(e.startMs, off)}${e.location ? `, ${e.location}` : ""}`, [[{ text: "Add to Google Calendar", data: "x", url: googleLink(e) }]]); await ctx.tg!.sendDocument(ctx.chatId!, "event.ics", icsFile(e, now), "Open this file to add it to Apple Calendar, Outlook or any calendar app."); }, poll: (q: string, o: string[]) => ctx.tg!.sendPoll(ctx.chatId!, q, o), react: async (e: string) => { if (ctx.msgId) await ctx.tg!.react(ctx.chatId!, ctx.msgId, e); }, attach: ctx.attach ?? undefined } : { source: ctx.untrusted ? ctx.source : undefined, attach: ctx.attach ?? undefined };
     // Text from outside (mail, automations) may propose a reminder or a task, never a fact, goal, setting or spend.
-    const acts = validateActions(p.actions, now, off).filter((a) => !ctx.untrusted || a.type === "reminder" || a.type === "task_add" || a.type === "calendar_link")
+    const valid = validateActions(p.actions, now, off);
+    const outsideOk = (a: { type: string }): boolean => a.type === "reminder" || a.type === "task_add" || a.type === "calendar_link" || !!ctx.outsideAllow?.includes(a.type);
+    const acts = valid.filter((a) => !ctx.untrusted || outsideOk(a))
       .filter((a) => !ctx.noSpend || a.type !== "spend"); // a photographed receipt is offered, not logged, unless the owner asked
+    // Text the owner shared (a page, a file, a forward) can carry instructions meant for the assistant. It may lead to a reminder or
+    // a task, which carry their origin, and nothing else; the owner is told what was left alone so they can ask for it directly.
+    const left = ctx.untrusted && ctx.source ? [...new Set(valid.filter((a) => !outsideOk(a) && LEFT_ALONE[a.type]).map((a) => LEFT_ALONE[a.type]!))] : [];
     // The owner's own words decide a clear relative time ("in 2 minutes", "tomorrow at 9am"); the model's arithmetic does not.
     const pol = (await loadPolicy(db)).policy;
     const when = parseWhen(text, now, off, parseHM(pol.morning) ?? 540);
@@ -253,6 +262,7 @@ export async function runAgent(ctx: Ctx, userText: string, hint?: string, store?
     done = await executeActions(db, acts, now, off, io, pol);
     const lines = [p.reply.trim()];
     if (done.length) lines.push(done.map((d) => `- ${d}`).join("\n"));
+    if (left.length) lines.push(`I left alone: ${left.join(", ")}. They came from text someone else wrote, so tell me directly if you want them.`);
     let zapButtons: Button[][] | undefined;
     const zap = acts.find((a) => a.type === "zap");
     if (zap && zap.type === "zap") {

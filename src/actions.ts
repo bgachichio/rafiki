@@ -3,8 +3,8 @@ import type { Db } from "./db.ts";
 import { mayExecute } from "./gates.ts";
 import { addFact, isCategory, isHedged, type Category } from "./memory.ts";
 import { DEFAULT_POLICY, type Policy } from "./policy.ts";
-import { closeMatching, type CloseKind } from "./lifecycle.ts";
-import { isRepeat, rescheduleMatching, type Repeat } from "./remind.ts";
+import { closeMatchingDetailed, type CloseKind } from "./lifecycle.ts";
+import { isRepeat, monthlyAnchor, rescheduleMatching, type Repeat } from "./remind.ts";
 import { feeFor, kes, type Tier } from "./spend.ts";
 import { fmtDateTime, parseHM, parseLocalIso } from "./time.ts";
 
@@ -23,7 +23,7 @@ export type Action =
   | { type: "calendar_link"; title: string; startMs: number; endMs: number; location: string | null }
   | { type: "zap"; tool: string; goal: string };
 
-export interface ActionIO { attach?: { kind: string; fileId: string; name: string }; calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
+export interface ActionIO { source?: string; attach?: { kind: string; fileId: string; name: string }; calendarLink?: (e: { title: string; startMs: number; endMs: number; location: string | null }) => Promise<void>; poll?: (q: string, options: string[]) => Promise<string | null>; react?: (emoji: string) => Promise<void> }
 const REACTIONS = ["👍", "❤", "🔥", "🙏", "🎉", "👀"];
 
 const str = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim().slice(0, max) : null);
@@ -133,6 +133,8 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
   for (const a of actions) {
     switch (a.type) {
       case "reminder": {
+        // Where it came from travels with a reminder made from outside text, so it never later reads as the owner's own words.
+        if (io?.source) a.text = `${a.text} (from ${io.source})`;
         // An event gets the owner's lead times (a heads-up each, sent once); a task gets one reminder with the owner's chase rules.
         // A deadline (a bill, a fee, a filing) also gets a warning a day ahead; a plain task gets one reminder.
         const leads = a.kind === "event" ? policy.eventLeads : a.kind === "deadline" ? [1440, 0] : [0];
@@ -140,7 +142,7 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         if (!slots.some((x) => x.lead === 0) && !slots.length) slots.push({ lead: 0, due: a.dueMs });
         for (const x of slots) {
           const main = x.lead === 0;
-          const r = await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(now, main ? a.text : `Coming up ${inText(x.lead)}: ${a.text}`, x.due, main ? a.repeat : "none").first<{ id: number }>();
+          const r = await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(now, main ? a.text : `Coming up ${inText(x.lead)}: ${a.text}`, x.due, main ? (a.repeat === "monthly" ? monthlyAnchor(a.dueMs, off) : a.repeat) : "none").first<{ id: number }>();
           const mode = main ? policy.mode : "once";
           await db.prepare("INSERT INTO reminder_policy (reminder_id, mode, gap_ms, max_chase) VALUES (?, ?, ?, ?)").bind(Number(r?.id), mode, Math.round(policy.gapH * 3600000), policy.max).run();
           if (main && io?.attach) await db.prepare("INSERT OR REPLACE INTO reminder_attach (reminder_id, kind, file_id, name) VALUES (?, ?, ?, ?)").bind(Number(r?.id), io.attach.kind, io.attach.fileId, io.attach.name).run();
@@ -150,17 +152,18 @@ export async function executeActions(db: Db, actions: Action[], now: number, off
         break;
       }
       case "task_add":
+        if (io?.source) a.text = `${a.text} (from ${io.source})`;
         await db.prepare("INSERT INTO tasks (ts, text) VALUES (?, ?)").bind(now, a.text).run();
         done.push(`Task added: ${a.text}`);
         break;
       case "reschedule": {
-        const hit = await rescheduleMatching(db, a.match, a.dueMs);
-        done.push(hit.length ? `Moved to ${fmtDateTime(a.dueMs, off)}: ${hit.join("; ")}` : `No open reminder matches "${a.match}".`);
+        const r = await rescheduleMatching(db, a.match, a.dueMs);
+        done.push(r.ambiguous.length ? `More than one reminder matches "${a.match}": ${r.ambiguous.slice(0, 4).join("; ")}. Tell me which one.` : r.moved.length ? `Moved to ${fmtDateTime(a.dueMs, off)}: ${r.moved.join("; ")}` : `No open reminder matches "${a.match}".`);
         break;
       }
       case "close": {
-        const hit = await closeMatching(db, a.kind, a.match, a.state);
-        done.push(hit.length ? `${a.state === "done" ? "Marked done" : "Closed for good"}: ${hit.join("; ")}` : `No open ${a.kind} matches "${a.match}".`);
+        const r = await closeMatchingDetailed(db, a.kind, a.match, a.state);
+        done.push(r.ambiguous.length ? `More than one ${a.kind} matches "${a.match}": ${r.ambiguous.slice(0, 4).join("; ")}. Tell me which one.` : r.closed.length ? `${a.state === "done" ? "Marked done" : "Closed for good"}: ${r.closed.join("; ")}` : `No open ${a.kind} matches "${a.match}".`);
         break;
       }
       case "goal_add": {

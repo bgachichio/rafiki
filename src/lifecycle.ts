@@ -43,17 +43,22 @@ const TABLE: Record<CloseKind, { sql: string; open: string }> = {
   reminder: { sql: "reminders", open: "state IN ('open', 'flagged', 'awaiting')" },
 };
 
-/** Close every open task, goal or reminder that matches the owner's words (all distinctive words present, or the phrase
- *  itself), at most five. Only the state changes: nothing is deleted. Returns the texts closed. */
-export async function closeMatching(db: Db, kind: CloseKind, match: string, state: "done" | "dropped"): Promise<string[]> {
+/** Close the one open task, goal or reminder that matches the owner's words (all distinctive words present, or the phrase
+ *  itself). When several match, nothing is closed and they are returned as `ambiguous`, so a vague word can never retire
+ *  a handful of items. Only the state changes: nothing is deleted. */
+export async function closeMatchingDetailed(db: Db, kind: CloseKind, match: string, state: "done" | "dropped"): Promise<{ closed: string[]; ambiguous: string[] }> {
   const q = words(match);
   const phrase = match.toLowerCase().trim();
-  if (!q.length) return [];
+  if (!q.length) return { closed: [], ambiguous: [] };
   const t = TABLE[kind];
   const rows = (await db.prepare(`SELECT id, text FROM ${t.sql} WHERE ${t.open} ORDER BY id LIMIT 60`).bind().all<{ id: number; text: string }>()).results;
-  const hits = rows.filter((r) => { const w = new Set(words(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); }).slice(0, 5);
+  const hits = rows.filter((r) => { const w = new Set(words(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); });
+  if (hits.length > 1) return { closed: [], ambiguous: hits.map((h) => h.text) };
   for (const h of hits) await db.prepare(`UPDATE ${t.sql} SET state = ? WHERE id = ?`).bind(state, h.id).run();
-  return hits.map((h) => h.text);
+  return { closed: hits.map((h) => h.text), ambiguous: [] };
+}
+export async function closeMatching(db: Db, kind: CloseKind, match: string, state: "done" | "dropped"): Promise<string[]> {
+  return (await closeMatchingDetailed(db, kind, match, state)).closed;
 }
 
 // ---- closed items are history: keep them out of what the model reads ------------------------------------------------------

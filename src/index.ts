@@ -6,7 +6,7 @@ import { runJobs } from "./jobs.ts";
 import { ensureSchema, handleSetup, timingSafeEqual, webhookSecret } from "./setup.ts";
 import { handleGoogleCallback } from "./oauth.ts";
 import { Telegram, type TgUpdate } from "./telegram.ts";
-import { handleEmail, handleInboundHttp, inboundKey, type EmailMsg } from "./bridge.ts";
+import { handleEmail, handleInboundHttp, inboundAllowed, inboundKey, type EmailMsg } from "./bridge.ts";
 
 interface WorkerEnv extends Env { DB: D1Database }
 
@@ -46,6 +46,7 @@ export default {
       const owner = await getSetting(env.DB, "owner_chat_id").catch(() => null);
       const want = await inboundKey(env, (await getSetting(env.DB, "inbound_salt").catch(() => null)) ?? "");
       if (!owner || !timingSafeEqual(inbound[1]!, want)) return new Response("not found", { status: 404 });
+      if (!(await inboundAllowed(env.DB, Date.now()))) return new Response("slow down", { status: 429 });
       const c: Ctx = { db: env.DB, env: await withModelOverrides(env.DB, env), f: netFetch, now: Date.now(), off: offsetOf(env) };
       return handleInboundHttp(req, c, new Telegram(env.TELEGRAM_BOT_TOKEN, netFetch), Number(owner));
     }

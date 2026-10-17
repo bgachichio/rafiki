@@ -9,13 +9,16 @@ import { fmtDate, fmtTime, parseHM, startOfLocalDay } from "./time.ts";
 export const REPEATS = ["none", "daily", "weekly", "weekdays", "monthly"] as const;
 export type Repeat = (typeof REPEATS)[number];
 export const isRepeat = (v: unknown): v is Repeat => typeof v === "string" && (REPEATS as readonly string[]).includes(v);
+/** A monthly reminder is stored as "monthly:31" so a short month never moves it for good (31 January, 28 February, 31 March). */
+export const monthlyAnchor = (dueMs: number, off: number): string => `monthly:${new Date(dueMs + off * 60000).getUTCDate()}`;
 const DAY = 86400000;
 
 /** The next occurrence after `due` that is still ahead of `now`, keeping the local time of day. Monthly keeps the day of the
  *  month (clamped to the month's length: the 31st becomes the 30th, or the 28th in February). */
 export function nextRepeat(due: number, repeat: string, off: number, now: number): number | null {
-  if (repeat !== "daily" && repeat !== "weekly" && repeat !== "weekdays" && repeat !== "monthly") return null;
-  let next = due;
+  if (repeat !== "daily" && repeat !== "weekly" && repeat !== "weekdays" && !/^monthly(:\d{1,2})?$/.test(repeat)) return null;
+  // Always at least one step: a reminder being chased has a due time in the near future that is not its next occurrence.
+  let next = stepOnce(due, repeat, off);
   for (let i = 0; i < 800 && next <= now; i++) next = stepOnce(next, repeat, off);
   return next > now ? next : null;
 }
@@ -30,10 +33,11 @@ function stepOnce(t: number, repeat: string, off: number): number {
   const l = new Date(t + off * 60000);
   const y = l.getUTCFullYear(), m = l.getUTCMonth() + 1;
   const days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  return Date.UTC(y, m, Math.min(l.getUTCDate(), days), l.getUTCHours(), l.getUTCMinutes()) - off * 60000;
+  const anchor = Number(/:(\d{1,2})$/.exec(repeat)?.[1]) || l.getUTCDate();
+  return Date.UTC(y, m, Math.min(anchor, days), l.getUTCHours(), l.getUTCMinutes()) - off * 60000;
 }
 
-export const repeatText = (r: string): string => (r === "daily" ? "every day" : r === "weekly" ? "every week" : r === "weekdays" ? "every weekday" : r === "monthly" ? "every month" : "");
+export const repeatText = (r: string): string => (r === "daily" ? "every day" : r === "weekly" ? "every week" : r === "weekdays" ? "every weekday" : r.startsWith("monthly") ? "every month" : "");
 
 interface RepRow { id: number; text: string; due_ts: number; repeat: string }
 
@@ -42,7 +46,8 @@ interface RepRow { id: number; text: string; due_ts: number; repeat: string }
 export async function ensureNext(db: Db, r: RepRow, now: number, off: number): Promise<number | null> {
   const next = nextRepeat(r.due_ts, r.repeat, off, now);
   if (next === null) return null;
-  const have = await db.prepare("SELECT id FROM reminders WHERE text = ? AND repeat = ? AND state = 'open' AND due_ts > ? AND id != ? LIMIT 1").bind(r.text, r.repeat, now, r.id).first<{ id: number }>();
+  // The successor is the one due around `next`. An earlier occurrence still being chased is due soon too, but it is not the successor.
+  const have = await db.prepare("SELECT id FROM reminders WHERE text = ? AND repeat = ? AND state = 'open' AND due_ts BETWEEN ? AND ? AND id != ? LIMIT 1").bind(r.text, r.repeat, next - 43200000, next + 43200000, r.id).first<{ id: number }>();
   if (have) return null;
   const nr = await db.prepare("INSERT INTO reminders (ts, text, due_ts, repeat) VALUES (?, ?, ?, ?) RETURNING id").bind(now, r.text, next, r.repeat).first<{ id: number }>();
   const id = Number(nr?.id);
@@ -63,14 +68,15 @@ export async function snoozeTarget(ctx: Ctx, which: "tomorrow" | "week"): Promis
 
 /** The open reminders that match the owner's words (all distinctive words present, or the phrase). Used to move one by words. */
 const WORD = (s: string): string[] => (s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length > 1 && !["the", "my", "to", "a", "an", "of", "reminder", "reminders"].includes(w));
-export async function rescheduleMatching(db: Db, match: string, dueMs: number): Promise<string[]> {
+export async function rescheduleMatching(db: Db, match: string, dueMs: number): Promise<{ moved: string[]; ambiguous: string[] }> {
   const q = WORD(match);
   const phrase = match.toLowerCase().trim();
-  if (!q.length) return [];
+  if (!q.length) return { moved: [], ambiguous: [] };
   const rows = (await db.prepare("SELECT id, text FROM reminders WHERE state IN ('open', 'flagged', 'awaiting') AND text NOT LIKE 'Coming up %' ORDER BY due_ts LIMIT 60").bind().all<{ id: number; text: string }>()).results;
-  const hits = rows.filter((r) => { const w = new Set(WORD(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); }).slice(0, 3);
+  const hits = rows.filter((r) => { const w = new Set(WORD(r.text)); return q.every((x) => w.has(x)) || r.text.toLowerCase().includes(phrase); });
+  if (hits.length > 1) return { moved: [], ambiguous: hits.map((h) => h.text) }; // a vague word moves nothing
   for (const h of hits) await db.prepare("UPDATE reminders SET state = 'open', due_ts = ?, chase_count = 0 WHERE id = ?").bind(dueMs, h.id).run();
-  return hits.map((h) => h.text);
+  return { moved: hits.map((h) => h.text), ambiguous: [] };
 }
 
 // ---- /reminders ---------------------------------------------------------------------------------------------------------
