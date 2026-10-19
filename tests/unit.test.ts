@@ -248,6 +248,22 @@ test("emoji: the owner's level reaches the model; none by default", async () => 
   assert.ok(!prefsLines({}).some((l) => l.startsWith("EMOJI")));
 });
 
+test("language: replies mirror English, Swahili or Sheng by default; a saved reply language overrides the message; Sheng keeps money plain", async () => {
+  const { prefsLines } = await import("../src/prefs.ts");
+  const lang = (p: Record<string, string>) => prefsLines(p).filter((l) => /LANGUAGE/.test(l) && !l.startsWith("LANGUAGES")).join("\n");
+  for (const p of [{}, { "reply.lang": "match" }, { "reply.lang": "French" }] as Record<string, string>[]) {
+    assert.match(lang(p), /^LANGUAGE: Reply in the language of the owner's message: English, Swahili or Sheng/, JSON.stringify(p));
+    assert.doesNotMatch(lang(p), /overrides/);
+  }
+  assert.match(lang({ "reply.lang": "Swahili" }), /overrides the language of their message[\s\S]*chose Swahili[\s\S]*even when they write in English or Sheng/);
+  assert.match(lang({ "reply.lang": "English" }), /chose English[\s\S]*even when they write in Swahili or Sheng/);
+  const sheng = lang({ "reply.lang": "Sheng" });
+  assert.match(sheng, /chose Sheng/);
+  assert.match(sheng, /amounts, deadlines, legal, health and security/);
+  assert.match(sheng, /clear request in the current message for another language comes first/);
+  assert.ok(prefsLines({ lang: "English, Sheng" }).includes("LANGUAGES: the owner writes in English, Sheng."));
+});
+
 test("cost: quiet until 60%, then one alert each at 60%, 90% and used up, once a day", async () => {
   const { costAlert } = await import("../src/agent.ts");
   const { makeDb, fakeFetch, ENV, sent } = await import("./shim.ts");

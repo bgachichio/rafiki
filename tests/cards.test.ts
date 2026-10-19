@@ -37,7 +37,7 @@ const pol = async (s: S) => (await loadPolicy(s.db));
 test("cards: a preset tap applies the choice, marks it confirmed and stores what was offered", async () => {
   const s = await setup();
   await handleUpdate(s.deps, msg("/rules"));
-  assert.ok(sent(s.fx.tg).some((t) => t.startsWith("11 quick questions")));
+  assert.ok(sent(s.fx.tg).some((t) => t.startsWith("12 quick questions")));
   // first card is "what to call you" with the Telegram name as the only preset
   assert.match(String(lastMsg(s).body.text), /What should I call you\?/);
   await handleUpdate(s.deps, tap(`dc:${cardId(s)}:0`));
@@ -99,6 +99,22 @@ test("cards: a multi-choice card is a poll, and the answer is saved as the owner
   const pollId = (await s.db.prepare("SELECT poll_id FROM decisions WHERE key = 'lang' AND state = 'open'").bind().first<{ poll_id: string }>())!.poll_id;
   assert.equal(await handleUpdate(s.deps, pollAns(pollId, [0, 1])), "card-poll");
   assert.equal((await loadPrefs(s.db)).lang, "English, Swahili");
+  assert.equal(s.fx.llm.length, 0);
+});
+
+test("cards: the reply language is a card with Match me first; Sheng is a language option; a tap saves it as confirmed", async () => {
+  const s = await setup();
+  await setSetting(s.db, "dc_seq", JSON.stringify(["reply.lang"]));
+  const { askDecision } = await import("../src/cards.ts");
+  await askDecision(s.ctx(), s.tg, OWNER, "reply.lang");
+  const card = lastMsg(s);
+  assert.match(String(card.body.text), /overrides the language you write in/);
+  assert.deepEqual(btns(card).map((b) => b.text.replace(/^✅ | \(suggested\)$/g, "")).slice(0, 4), ["Match me", "English", "Swahili", "Sheng"]);
+  await handleUpdate(s.deps, tap(`dc:${cardId(s)}:3`)); // Sheng
+  assert.equal((await loadPrefs(s.db))["reply.lang"], "Sheng");
+  assert.equal((await pol(s)).status["reply.lang"], "confirmed");
+  const { SPECS } = await import("../src/decisions.ts");
+  assert.ok((await Promise.resolve(SPECS.lang!.options(s.ctx()))).some((o) => o.id === "Sheng"));
   assert.equal(s.fx.llm.length, 0);
 });
 

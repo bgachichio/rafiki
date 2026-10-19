@@ -36,7 +36,7 @@ const settingTime = (key: string, def: string): Pick<Spec, "effective" | "apply"
   show: hm,
 });
 const QUIET: Opt[] = [{ id: "21:00-05:30", label: "21:00 to 05:30" }, { id: "22:00-06:00", label: "22:00 to 06:00" }, { id: "23:00-07:00", label: "23:00 to 07:00" }, { id: "00:00-06:00", label: "Midnight to 06:00" }];
-const LANGS = ["English", "Swahili", "French", "Arabic", "Hindi", "Spanish", "Portuguese", "German"];
+const LANGS = ["English", "Swahili", "Sheng", "French", "Arabic", "Hindi", "Spanish", "Portuguese", "German"];
 
 export const SPECS: Record<string, Spec> = {
   call_me: {
@@ -103,12 +103,17 @@ export const SPECS: Record<string, Spec> = {
     parse: (t) => { const n = Number(/(\d+)/.exec(t)?.[1]); return Number.isInteger(n) && n >= 0 && n <= 20 ? String(n) : null; }, hint: "Type a number.",
   },
   lang: {
-    key: "lang", label: "Languages", question: "Which languages do you write in? I'll reply in the one you write in. Pick all that apply.", multi: true,
+    key: "lang", label: "Languages", question: "Which languages do you write in? Pick all that apply. By default I reply in the one you write in; you can fix my reply language in the next card.", multi: true,
     options: () => LANGS.map((l) => ({ id: l, label: l })), effective: async (ctx) => (await loadPrefs(ctx.db)).lang ?? "", show: (v) => v || "not set", apply: write("lang"),
     parse: (t) => (t.trim().length > 0 ? t.trim().slice(0, 100) : null), hint: "Type the languages, separated by commas.",
   },
 };
 
+SPECS["reply.lang"] = {
+  key: "reply.lang", label: "Reply language", question: "Which language should I reply in? A fixed choice overrides the language you write in; \"Match me\" follows each message.", noCustom: true, hint: "",
+  options: () => [{ id: "match", label: "Match me" }, { id: "English", label: "English" }, { id: "Swahili", label: "Swahili" }, { id: "Sheng", label: "Sheng" }],
+  effective: pref("reply.lang", "match"), show: (v) => (v === "match" ? "match the language you write in" : v), apply: write("reply.lang"),
+};
 SPECS["emoji.level"] = {
   key: "emoji.level", label: "Emoji", question: "How much emoji would you like in my replies?", noCustom: true, hint: "",
   options: () => [{ id: "none", label: "None" }, { id: "few", label: "A few" }, { id: "balanced", label: "Balanced" }, { id: "lots", label: "A lot" }],
@@ -123,7 +128,7 @@ SPECS["emoji.skin"] = {
 };
 
 /** The order of the "how I work" walk-through. Skin tone follows emoji, and only when emoji are on. */
-export const SEQ = ["call_me", "remind.mode", "remind.event_leads", "remind.morning", "style", "emoji.level", "emoji.skin", "brief_time", "quiet", "nudges.max", "lang"];
+export const SEQ = ["call_me", "remind.mode", "remind.event_leads", "remind.morning", "style", "emoji.level", "emoji.skin", "brief_time", "quiet", "nudges.max", "lang", "reply.lang"];
 
 const modelSpec = (kind: ModelKind, label: string, question: string): Spec => ({
   key: `model.${kind}`, label, question,
