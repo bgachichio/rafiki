@@ -160,7 +160,7 @@ export async function cardPoll(ctx: Ctx, tg: Telegram, chatId: number, pollId: s
 export async function modelProposal(ctx: Ctx, tg: Telegram, chatId: number): Promise<void> {
   const facts = (await ctx.db.prepare("SELECT text FROM facts ORDER BY id DESC LIMIT 200").bind().all<{ text: string }>()).results.map((f) => f.text).join("\n").slice(0, 20000);
   const prefs = await loadPrefs(ctx.db);
-  const p = proposeModels(`${facts}\n${prefs.style_note ?? ""}`, prefs.lang ?? "");
+  const p = proposeModels(`${facts}\n${prefs.style_note ?? ""}`, `${prefs.lang ?? ""} ${prefs["reply.lang"] ?? ""}`);
   await setSetting(ctx.db, "dc_prop", JSON.stringify({ "model.fast": p.fast, "model.smart": p.smart, "model.media": p.media }));
   const same = (["fast", "smart", "media"] as ModelKind[]).every((k) => p[k] === DEFAULT_MODELS[k]);
   await tg.send(chatId, [same ? "On the AI models, I suggest keeping the defaults:" : "Based on what you shared, I suggest these AI models:", `- Everyday: ${modelLabel("fast", p.fast)}`, `- Deep thinking: ${modelLabel("smart", p.smart)}`, `- Voice, photos, files: ${modelLabel("media", p.media)}`, "", ...p.reasons].join("\n"),
